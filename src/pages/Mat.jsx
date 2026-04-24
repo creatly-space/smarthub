@@ -1,0 +1,1 @@
+export default function Mat() { return (<div><div className="page-title">Mat</div><p className="page-subtitle">Veckans matsedel</p></div>) }

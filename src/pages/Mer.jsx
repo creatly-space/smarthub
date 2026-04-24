@@ -1,0 +1,1 @@
+export default function Mer() { return (<div><div className="page-title">Mer</div><p className="page-subtitle">Inställningar</p></div>) }
