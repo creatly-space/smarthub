@@ -481,7 +481,7 @@ export default function SmartHub() {
   }
 
   return (
-    <div style={{ fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", background: BG, display: "flex", flexDirection: "column", height: "100dvh", maxWidth: 480, margin: "0 auto", position: "relative", overflow: "hidden" }}>
+    <div style={{ fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", background: BG, display: "flex", flexDirection: "column", height: "100dvh", position: "relative", overflow: "hidden", zoom: 2.25 }}>
       <ClockHero bg={bg} onChangeBg={setBg} />
       <div style={{ display: "flex", borderBottom: `0.5px solid ${BORDER}`, background: CARD, flexShrink: 0 }}>
         {TABS.map(t => (
