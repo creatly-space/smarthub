@@ -3,6 +3,7 @@ import { supabase } from './lib/supabase'
 import SmartHub from './SmartHub'
 import Login from './components/Login'
 import Onboarding from './components/Onboarding'
+import LogoutButton from './components/LogoutButton'
 
 export default function App() {
   const [session, setSession] = useState(null)
@@ -76,5 +77,10 @@ export default function App() {
     return <Onboarding session={session} onComplete={setHousehold} />
   }
 
-  return <SmartHub session={session} household={household} />
+  return (
+    <>
+      <LogoutButton />
+      <SmartHub session={session} household={household} />
+    </>
+  )
 }
