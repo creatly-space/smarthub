@@ -39,19 +39,6 @@ export default function Onboarding({ session, onComplete }) {
       return
     }
 
-    const { error: lError } = await supabase
-      .from('layouts')
-      .insert({
-        household_id: household.id,
-        created_by: session.user.id,
-        name: 'Standard',
-        config: {},
-      })
-
-    if (lError) {
-      console.warn('Layout creation failed:', lError.message)
-    }
-
     onComplete(household)
   }
 
