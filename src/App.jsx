@@ -34,7 +34,7 @@ export default function App() {
                           fontFamily: 'system-ui',
                 }}>
                           Laddar...
-                </div>div>
+                </div>div></div>
               )
   }
 
