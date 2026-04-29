@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
+import { supabase } from "./lib/supabase"
 
 const ACCENT = "#5B52E7"
 const ACCENT_SOFT = "#EEEDFE"
@@ -18,6 +19,7 @@ const T3 = "#9E9E98"
 
 const WEEKDAYS = ["Söndag", "Måndag", "Tisdag", "Onsdag", "Torsdag", "Fredag", "Lördag"]
 const MONTHS = ["januari", "februari", "mars", "april", "maj", "juni", "juli", "augusti", "september", "oktober", "november", "december"]
+const MEAL_DAYS = ["Mån", "Tis", "Ons", "Tor", "Fre", "Lör", "Sön"]
 
 const BACKGROUNDS = [
   { id: "sunset", label: "Solnedgång", style: { background: "linear-gradient(160deg,#1a1a2e 0%,#16213e 40%,#0f3460 70%,#e94560 100%)" }, textColor: "#fff" },
@@ -26,42 +28,6 @@ const BACKGROUNDS = [
   { id: "warm", label: "Morgon", style: { background: "linear-gradient(160deg,#f8e7d3 0%,#f5c6a0 50%,#e8956d 100%)" }, textColor: "#6b3a1f" },
   { id: "night", label: "Natt", style: { background: "linear-gradient(160deg,#0d0d0d 0%,#1a1a1a 50%,#2d2d2d 100%)" }, textColor: "#fff" },
   { id: "aurora", label: "Aurora", style: { background: "linear-gradient(160deg,#0b1a2e 0%,#0d4f3c 40%,#1a7a5e 70%,#00d4aa 100%)" }, textColor: "#c8fff4" }
-]
-
-const CAL_EVENTS = {
-  2: [{ time: "17:30", title: "Carro: gymnastik", color: "#7c6ef7" }],
-  6: [{ time: "16:30", title: "Frank: träning", color: GREEN }, { time: "18:15", title: "Carro: gymnastik", color: "#7c6ef7" }],
-  9: [{ time: "17:30", title: "Carro: gymnastik", color: "#7c6ef7" }],
-  12: [{ time: "13:30", title: "Carro: gymnastik", color: "#7c6ef7" }],
-  15: [{ time: "09:30", title: "Tandläkare Noa", color: "#5B52E7" }],
-  19: [{ time: "13:30", title: "Carro: gymnastik", color: "#7c6ef7" }],
-  23: [{ time: "17:30", title: "Carro: gymnastik", color: "#7c6ef7" }],
-  25: [{ time: "17:00", title: "Fotbollsträning", color: "#5B52E7" }, { time: "18:00", title: "Föräldramöte", color: GREEN }, { time: "20:30", title: "Hot tub", color: BLUE }],
-  30: [{ time: "19:00", title: "Yoga", color: GREEN }]
-}
-
-const EVENTS_TODAY = [
-  { id: 1, start: "17:00", title: "Fotbollsträning", location: "Vallens IP", color: "#5B52E7", now: true },
-  { id: 2, start: "18:00", title: "Föräldramöte", location: "Solgläntans skola", color: GREEN },
-  { id: 3, start: "20:30", title: "Hot tub", color: BLUE }
-]
-
-const MEALS = [
-  { day: "Mån", meal: "Köttbullar & mos" },
-  { day: "Tis", meal: "Laxpasta" },
-  { day: "Ons", meal: "Kycklingwok" },
-  { day: "Tor", meal: "Tacos" },
-  { day: "Fre", meal: "Pizza" },
-  { day: "Lör", meal: "Grillat" },
-  { day: "Sön", meal: "Soppa" }
-]
-
-const TODO_ITEMS = [
-  { text: "Köp mjölk", done: false },
-  { text: "Boka service", done: false },
-  { text: "Ringa tandläkaren", done: true },
-  { text: "Betala räkningar", done: false },
-  { text: "Handla mat", done: false }
 ]
 
 const LAYOUTS = [
@@ -81,7 +47,69 @@ const WIDGET_DEFS = [
   { id: "tom", label: "Tom", icon: "➕" }
 ]
 
-function WidgetKalender() {
+// ----- Helpers -----
+function getISOWeek(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+  const dayNum = d.getUTCDay() || 7
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum)
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+  return { week: Math.ceil((((d - yearStart) / 86400000) + 1) / 7), year: d.getUTCFullYear() }
+}
+
+function fmtTime(iso) {
+  if (!iso) return ""
+  const d = new Date(iso)
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
+}
+
+// Group calendar events by day-of-month for the *currently visible* month in the small calendar.
+// Since the small widget only shows current month, we use date.getDate() as key.
+function groupEventsByDay(events, year, month) {
+  const out = {}
+  events.forEach(ev => {
+    const d = new Date(ev.start_time)
+    if (d.getFullYear() === year && d.getMonth() === month) {
+      const day = d.getDate()
+      if (!out[day]) out[day] = []
+      out[day].push({
+        time: fmtTime(ev.start_time),
+        title: ev.title,
+        color: ev.color || ACCENT
+      })
+    }
+  })
+  // sort each day by time
+  Object.keys(out).forEach(k => out[k].sort((a, b) => a.time.localeCompare(b.time)))
+  return out
+}
+
+function getEventsToday(events) {
+  const today = new Date()
+  const y = today.getFullYear(), m = today.getMonth(), d = today.getDate()
+  return events
+    .filter(ev => {
+      const dt = new Date(ev.start_time)
+      return dt.getFullYear() === y && dt.getMonth() === m && dt.getDate() === d
+    })
+    .sort((a, b) => new Date(a.start_time) - new Date(b.start_time))
+    .map(ev => {
+      const start = new Date(ev.start_time)
+      const end = ev.end_time ? new Date(ev.end_time) : null
+      const now = new Date()
+      const isNow = end ? now >= start && now <= end : Math.abs(now - start) < 30 * 60 * 1000
+      return {
+        id: ev.id,
+        start: fmtTime(ev.start_time),
+        title: ev.title,
+        location: ev.location,
+        color: ev.color || ACCENT,
+        now: isNow
+      }
+    })
+}
+
+// ----- Widgets -----
+function WidgetKalender({ calEventsByDay }) {
   const now = new Date()
   const [vm, setVm] = useState(now.getMonth())
   const [vy, setVy] = useState(now.getFullYear())
@@ -95,6 +123,10 @@ function WidgetKalender() {
   const weeks = []
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7))
   const isToday = d => d === now.getDate() && vm === now.getMonth() && vy === now.getFullYear()
+
+  // Only show events when viewing current month (small widget compromise)
+  const viewingCurrentMonth = vm === now.getMonth() && vy === now.getFullYear()
+  const eventsForView = viewingCurrentMonth ? calEventsByDay : {}
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", gap: 6 }}>
@@ -115,7 +147,7 @@ function WidgetKalender() {
           {weeks.map((week, wi) => (
             <tr key={wi}>
               {week.map((d, di) => {
-                const evs = d ? (CAL_EVENTS[d] || []) : []
+                const evs = d ? (eventsForView[d] || []) : []
                 const today = d && isToday(d)
                 return (
                   <td key={di} style={{ verticalAlign: "top", padding: "1px", textAlign: "center" }}>
@@ -142,10 +174,8 @@ function WidgetKalender() {
   )
 }
 
-function WidgetTodo() {
-  const [items, setItems] = useState(TODO_ITEMS)
-  const toggle = i => setItems(prev => prev.map((it, idx) => idx === i ? { ...it, done: !it.done } : it))
-  const remaining = items.filter(i => !i.done).length
+function WidgetTodo({ todos, onToggle }) {
+  const remaining = todos.filter(i => !i.done).length
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", gap: 6 }}>
@@ -154,8 +184,9 @@ function WidgetTodo() {
         <span style={{ fontSize: 9, color: GREEN, background: GREEN_BG, padding: "2px 7px", borderRadius: 10, fontWeight: 600 }}>{remaining} kvar</span>
       </div>
       <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 5, overflowY: "auto" }}>
-        {items.map((item, i) => (
-          <div key={i} onClick={() => toggle(i)} style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer", flexShrink: 0 }}>
+        {todos.length === 0 && <span style={{ fontSize: 10, color: T3, fontStyle: "italic" }}>Inga uppgifter</span>}
+        {todos.map(item => (
+          <div key={item.id} onClick={() => onToggle(item)} style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer", flexShrink: 0 }}>
             <div style={{ width: 15, height: 15, borderRadius: "50%", flexShrink: 0, border: item.done ? "none" : `1.5px solid ${BORDER}`, background: item.done ? GREEN : "transparent", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, color: "#fff" }}>{item.done ? "✓" : ""}</div>
             <span style={{ fontSize: 11, color: item.done ? T3 : T1, textDecoration: item.done ? "line-through" : "none" }}>{item.text}</span>
           </div>
@@ -165,18 +196,23 @@ function WidgetTodo() {
   )
 }
 
-function WidgetMat() {
+function WidgetMat({ meals }) {
   const now = new Date()
   const todayIdx = now.getDay() === 0 ? 6 : now.getDay() - 1
+
+  // Build a map day_of_week (0-6, where 0=Mon) -> description
+  // Assumption: db stores day_of_week 0-6 with 0=Mon. If your data uses Sunday=0, adjust here.
+  const byDay = {}
+  meals.forEach(m => { byDay[m.day_of_week] = m.description })
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", gap: 5 }}>
       <span style={{ fontSize: 11, fontWeight: 700, color: T1, flexShrink: 0 }}>Matsedel</span>
       <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4, overflowY: "auto" }}>
-        {MEALS.map((m, i) => (
+        {MEAL_DAYS.map((day, i) => (
           <div key={i} style={{ display: "flex", gap: 8, alignItems: "baseline", flexShrink: 0 }}>
-            <span style={{ fontSize: 8, fontWeight: 600, color: i === todayIdx ? AMBER : T3, minWidth: 22, textAlign: "right", flexShrink: 0 }}>{m.day}</span>
-            <span style={{ fontSize: 11, color: i === todayIdx ? T1 : T2, fontWeight: i === todayIdx ? 600 : 400 }}>{m.meal}</span>
+            <span style={{ fontSize: 8, fontWeight: 600, color: i === todayIdx ? AMBER : T3, minWidth: 22, textAlign: "right", flexShrink: 0 }}>{day}</span>
+            <span style={{ fontSize: 11, color: i === todayIdx ? T1 : T2, fontWeight: i === todayIdx ? 600 : 400 }}>{byDay[i] || <span style={{ color: T3, fontStyle: "italic" }}>—</span>}</span>
           </div>
         ))}
       </div>
@@ -184,12 +220,13 @@ function WidgetMat() {
   )
 }
 
-function WidgetEvents() {
+function WidgetEvents({ eventsToday }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", gap: 6 }}>
       <span style={{ fontSize: 11, fontWeight: 700, color: T1, flexShrink: 0 }}>Idag</span>
       <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8, overflowY: "auto" }}>
-        {EVENTS_TODAY.map(e => (
+        {eventsToday.length === 0 && <span style={{ fontSize: 10, color: T3, fontStyle: "italic" }}>Inget inplanerat idag</span>}
+        {eventsToday.map(e => (
           <div key={e.id} style={{ display: "flex", gap: 8, alignItems: "flex-start", flexShrink: 0 }}>
             <div style={{ width: 3, minHeight: 32, background: e.color, borderRadius: 2, flexShrink: 0, marginTop: 2 }} />
             <div>
@@ -235,14 +272,14 @@ function WidgetTom({ onEdit }) {
   )
 }
 
-function renderWidget(id, onEdit) {
+function renderWidget(id, ctx) {
   switch (id) {
-    case "kalender": return <WidgetKalender />
-    case "todo": return <WidgetTodo />
-    case "mat": return <WidgetMat />
-    case "events": return <WidgetEvents />
+    case "kalender": return <WidgetKalender calEventsByDay={ctx.calEventsByDay} />
+    case "todo": return <WidgetTodo todos={ctx.todos} onToggle={ctx.onToggleTodo} />
+    case "mat": return <WidgetMat meals={ctx.meals} />
+    case "events": return <WidgetEvents eventsToday={ctx.eventsToday} />
     case "vader": return <WidgetVader />
-    default: return <WidgetTom onEdit={onEdit} />
+    default: return <WidgetTom onEdit={ctx.onEdit} />
   }
 }
 
@@ -363,7 +400,7 @@ function EditPanel({ layout, assignments, onSave, onClose }) {
   )
 }
 
-function GridDash({ layoutId, assignments, onEdit }) {
+function GridDash({ layoutId, assignments, onEdit, widgetCtx }) {
   const layout = LAYOUTS.find(l => l.id === layoutId)
   const rowFrStr = layout.rowFr.map(f => `${f}fr`).join(" ")
 
@@ -377,7 +414,7 @@ function GridDash({ layoutId, assignments, onEdit }) {
           const wid = assignments[slot.id] || "tom"
           return (
             <div key={slot.id} style={{ gridColumn: `${slot.col} / span ${slot.colSpan}`, gridRow: `${slot.row} / span ${slot.rowSpan}`, background: CARD, borderRadius: 14, border: `0.5px solid ${BORDER}`, padding: 10, overflow: "hidden", minHeight: 0 }}>
-              {renderWidget(wid, onEdit)}
+              {renderWidget(wid, { ...widgetCtx, onEdit })}
             </div>
           )
         })}
@@ -386,7 +423,7 @@ function GridDash({ layoutId, assignments, onEdit }) {
   )
 }
 
-function FullKal() {
+function FullKal({ events }) {
   const now = new Date()
   const [vm, setVm] = useState(now.getMonth())
   const [vy, setVy] = useState(now.getFullYear())
@@ -402,10 +439,11 @@ function FullKal() {
   const isToday = d => d === now.getDate() && vm === now.getMonth() && vy === now.getFullYear()
   const getWeek = d => {
     if (!d) return ""
-    const date = new Date(vy, vm, d)
-    const start = new Date(date.getFullYear(), 0, 1)
-    return Math.ceil(((date - start) / 86400000 + start.getDay() + 1) / 7)
+    return getISOWeek(new Date(vy, vm, d)).week
   }
+
+  // Group events for the visible month
+  const eventsByDay = useMemo(() => groupEventsByDay(events, vy, vm), [events, vy, vm])
 
   return (
     <div style={{ background: CARD, borderRadius: 14, border: `0.5px solid ${BORDER}`, overflow: "hidden" }}>
@@ -434,7 +472,7 @@ function FullKal() {
                 <span style={{ fontSize: 9, color: T3 }}>{week.find(d => d) ? getWeek(week.find(d => d)) : ""}</span>
               </td>
               {week.map((d, di) => {
-                const evs = d ? (CAL_EVENTS[d] || []) : []
+                const evs = d ? (eventsByDay[d] || []) : []
                 const today = d && isToday(d)
                 return (
                   <td key={di} style={{ padding: "3px", verticalAlign: "top", borderRight: di < 6 ? `0.5px solid ${BORDER}` : "none", background: today ? "rgba(91,82,231,0.05)" : "transparent" }}>
@@ -468,16 +506,263 @@ const TABS = [
   { key: "mer", label: "Mer", icon: "⚙️" }
 ]
 
-export default function SmartHub() {
+export default function SmartHub({ session, household }) {
+  const userId = session?.user?.id
+  const householdId = household?.id
+
   const [tab, setTab] = useState("hem")
   const [bg, setBg] = useState(BACKGROUNDS[0])
   const [layoutId, setLayoutId] = useState("big-two-small")
   const [assignments, setAssign] = useState({ A: "kalender", B: "todo", C: "events" })
   const [editOpen, setEditOpen] = useState(false)
+
+  const [todos, setTodos] = useState([])
+  const [calEvents, setCalEvents] = useState([])
+  const [meals, setMeals] = useState([])
+  const [loaded, setLoaded] = useState({ todos: false, events: false, meals: false, layout: false })
+
+  // ----- Load layout for this user -----
+  useEffect(() => {
+    if (!userId) return
+    let cancelled = false
+
+    async function loadLayout() {
+      const { data, error } = await supabase
+        .from("layouts")
+        .select("layout_id, assignments, bg_id")
+        .eq("user_id", userId)
+        .maybeSingle()
+
+      if (cancelled) return
+      if (error) {
+        console.error("[layouts] load:", error)
+      } else if (data) {
+        if (data.layout_id) setLayoutId(data.layout_id)
+        if (data.assignments) setAssign(data.assignments)
+        if (data.bg_id) {
+          const found = BACKGROUNDS.find(b => b.id === data.bg_id)
+          if (found) setBg(found)
+        }
+      }
+      setLoaded(s => ({ ...s, layout: true }))
+    }
+
+    loadLayout()
+    return () => { cancelled = true }
+  }, [userId])
+
+  // ----- Load todos + realtime -----
+  useEffect(() => {
+    if (!householdId) return
+    let cancelled = false
+
+    async function loadTodos() {
+      const { data, error } = await supabase
+        .from("todos")
+        .select("*")
+        .eq("household_id", householdId)
+        .order("created_at", { ascending: true })
+      if (cancelled) return
+      if (error) console.error("[todos] load:", error)
+      else setTodos(data || [])
+      setLoaded(s => ({ ...s, todos: true }))
+    }
+    loadTodos()
+
+    const ch = supabase
+      .channel(`todos:${householdId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "todos", filter: `household_id=eq.${householdId}` },
+        payload => {
+          setTodos(prev => {
+            if (payload.eventType === "INSERT") {
+              if (prev.some(t => t.id === payload.new.id)) return prev
+              return [...prev, payload.new]
+            }
+            if (payload.eventType === "UPDATE") {
+              return prev.map(t => t.id === payload.new.id ? payload.new : t)
+            }
+            if (payload.eventType === "DELETE") {
+              return prev.filter(t => t.id !== payload.old.id)
+            }
+            return prev
+          })
+        }
+      )
+      .subscribe()
+
+    return () => {
+      cancelled = true
+      supabase.removeChannel(ch)
+    }
+  }, [householdId])
+
+  // ----- Load calendar_events + realtime -----
+  useEffect(() => {
+    if (!householdId) return
+    let cancelled = false
+
+    async function loadEvents() {
+      // Pull a generous window: 6 months back, 12 months forward.
+      const now = new Date()
+      const from = new Date(now.getFullYear(), now.getMonth() - 6, 1).toISOString()
+      const to = new Date(now.getFullYear(), now.getMonth() + 12, 0).toISOString()
+
+      const { data, error } = await supabase
+        .from("calendar_events")
+        .select("*")
+        .eq("household_id", householdId)
+        .gte("start_time", from)
+        .lte("start_time", to)
+        .order("start_time", { ascending: true })
+
+      if (cancelled) return
+      if (error) console.error("[calendar_events] load:", error)
+      else setCalEvents(data || [])
+      setLoaded(s => ({ ...s, events: true }))
+    }
+    loadEvents()
+
+    const ch = supabase
+      .channel(`events:${householdId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "calendar_events", filter: `household_id=eq.${householdId}` },
+        payload => {
+          setCalEvents(prev => {
+            if (payload.eventType === "INSERT") {
+              if (prev.some(e => e.id === payload.new.id)) return prev
+              return [...prev, payload.new]
+            }
+            if (payload.eventType === "UPDATE") {
+              return prev.map(e => e.id === payload.new.id ? payload.new : e)
+            }
+            if (payload.eventType === "DELETE") {
+              return prev.filter(e => e.id !== payload.old.id)
+            }
+            return prev
+          })
+        }
+      )
+      .subscribe()
+
+    return () => {
+      cancelled = true
+      supabase.removeChannel(ch)
+    }
+  }, [householdId])
+
+  // ----- Load meals (current ISO week) + realtime -----
+  const { week: currentWeek, year: currentYear } = useMemo(() => getISOWeek(new Date()), [])
+
+  useEffect(() => {
+    if (!householdId) return
+    let cancelled = false
+
+    async function loadMeals() {
+      const { data, error } = await supabase
+        .from("meals")
+        .select("*")
+        .eq("household_id", householdId)
+        .eq("week_number", currentWeek)
+        .eq("year", currentYear)
+
+      if (cancelled) return
+      if (error) console.error("[meals] load:", error)
+      else setMeals(data || [])
+      setLoaded(s => ({ ...s, meals: true }))
+    }
+    loadMeals()
+
+    const ch = supabase
+      .channel(`meals:${householdId}:${currentYear}-${currentWeek}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "meals", filter: `household_id=eq.${householdId}` },
+        payload => {
+          // Only react to current week
+          const row = payload.new || payload.old
+          if (!row) return
+          if (row.week_number !== currentWeek || row.year !== currentYear) return
+
+          setMeals(prev => {
+            if (payload.eventType === "INSERT") {
+              if (prev.some(m => m.id === payload.new.id)) return prev
+              return [...prev, payload.new]
+            }
+            if (payload.eventType === "UPDATE") {
+              return prev.map(m => m.id === payload.new.id ? payload.new : m)
+            }
+            if (payload.eventType === "DELETE") {
+              return prev.filter(m => m.id !== payload.old.id)
+            }
+            return prev
+          })
+        }
+      )
+      .subscribe()
+
+    return () => {
+      cancelled = true
+      supabase.removeChannel(ch)
+    }
+  }, [householdId, currentWeek, currentYear])
+
+  // ----- Toggle todo (writes to Supabase, realtime echoes back) -----
+  async function handleToggleTodo(item) {
+    const newDone = !item.done
+    // Optimistic update
+    setTodos(prev => prev.map(t => t.id === item.id ? { ...t, done: newDone, completed_at: newDone ? new Date().toISOString() : null } : t))
+    const { error } = await supabase
+      .from("todos")
+      .update({ done: newDone, completed_at: newDone ? new Date().toISOString() : null })
+      .eq("id", item.id)
+    if (error) {
+      console.error("[todos] toggle:", error)
+      // Revert on failure
+      setTodos(prev => prev.map(t => t.id === item.id ? item : t))
+    }
+  }
+
+  // ----- Persist layout (debounced via simple effect) -----
+  useEffect(() => {
+    if (!userId || !loaded.layout) return
+    const t = setTimeout(async () => {
+      const { error } = await supabase
+        .from("layouts")
+        .upsert({
+          user_id: userId,
+          layout_id: layoutId,
+          assignments,
+          bg_id: bg.id,
+          updated_at: new Date().toISOString()
+        }, { onConflict: "user_id" })
+      if (error) console.error("[layouts] save:", error)
+    }, 400)
+    return () => clearTimeout(t)
+  }, [userId, layoutId, assignments, bg, loaded.layout])
+
   const handleSave = (lid, assign) => {
     setLayoutId(lid)
     setAssign(assign)
     setEditOpen(false)
+  }
+
+  // ----- Derived data -----
+  const now = new Date()
+  const calEventsByDay = useMemo(
+    () => groupEventsByDay(calEvents, now.getFullYear(), now.getMonth()),
+    [calEvents]
+  )
+  const eventsToday = useMemo(() => getEventsToday(calEvents), [calEvents])
+
+  const widgetCtx = {
+    todos,
+    onToggleTodo: handleToggleTodo,
+    calEventsByDay,
+    eventsToday,
+    meals
   }
 
   return (
@@ -492,10 +777,10 @@ export default function SmartHub() {
         ))}
       </div>
       <div style={{ flex: 1, padding: 10, minHeight: 0, overflow: "hidden" }}>
-        {tab === "hem" && <GridDash layoutId={layoutId} assignments={assignments} onEdit={() => setEditOpen(true)} />}
-        {tab === "kalender" && <div style={{ height: "100%", overflowY: "auto" }}><FullKal /></div>}
-        {tab === "listor" && <div style={{ height: "100%", overflowY: "auto" }}><div style={{ background: CARD, borderRadius: 14, border: `0.5px solid ${BORDER}`, padding: 16 }}><WidgetTodo /></div></div>}
-        {tab === "mat" && <div style={{ height: "100%", overflowY: "auto" }}><div style={{ background: CARD, borderRadius: 14, border: `0.5px solid ${BORDER}`, padding: 16 }}><WidgetMat /></div></div>}
+        {tab === "hem" && <GridDash layoutId={layoutId} assignments={assignments} onEdit={() => setEditOpen(true)} widgetCtx={widgetCtx} />}
+        {tab === "kalender" && <div style={{ height: "100%", overflowY: "auto" }}><FullKal events={calEvents} /></div>}
+        {tab === "listor" && <div style={{ height: "100%", overflowY: "auto" }}><div style={{ background: CARD, borderRadius: 14, border: `0.5px solid ${BORDER}`, padding: 16 }}><WidgetTodo todos={todos} onToggle={handleToggleTodo} /></div></div>}
+        {tab === "mat" && <div style={{ height: "100%", overflowY: "auto" }}><div style={{ background: CARD, borderRadius: 14, border: `0.5px solid ${BORDER}`, padding: 16 }}><WidgetMat meals={meals} /></div></div>}
         {tab === "mer" && <div style={{ background: CARD, borderRadius: 14, border: `0.5px solid ${BORDER}`, padding: 16, color: T3, fontSize: 14 }}>Inställningar</div>}
       </div>
       {editOpen && <EditPanel layout={layoutId} assignments={assignments} onSave={handleSave} onClose={() => setEditOpen(false)} />}
