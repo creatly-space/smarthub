@@ -47,61 +47,30 @@ const WIDGET_DEFS = [
   {id:"tom",label:"Tom",icon:"\u2795"}
 ]
 
-// ----- SMHI Weather -----
-const SMHI_LAT = 56.66
-const SMHI_LON = 16.36
-const SMHI_LOCATION = "Kalmar"
+// ----- Open-Meteo Weather -----
+const WEATHER_LAT = 56.66
+const WEATHER_LON = 16.36
+const WEATHER_LOCATION = "Kalmar"
 
-// SMHI Wsymb2 codes -> emoji + description
-const WSYMB = {
-  1:{e:"\u2600\ufe0f",t:"Klart"},2:{e:"\ud83c\udf24\ufe0f",t:"L\u00e4tt molnigt"},3:{e:"\u26c5",t:"Halvklart"},4:{e:"\ud83c\udf25\ufe0f",t:"Molnigt"},5:{e:"\u2601\ufe0f",t:"Mulet"},6:{e:"\u2601\ufe0f",t:"Mulet"},
-  7:{e:"\ud83c\udf2b\ufe0f",t:"Dimma"},8:{e:"\ud83c\udf26\ufe0f",t:"L\u00e4tt regnskur"},9:{e:"\ud83c\udf26\ufe0f",t:"Regnskur"},10:{e:"\ud83c\udf27\ufe0f",t:"Kraftig regnskur"},
-  11:{e:"\u26c8\ufe0f",t:"\u00c5skv\u00e4der"},12:{e:"\ud83c\udf28\ufe0f",t:"L\u00e4tt sn\u00f6blandat"},13:{e:"\ud83c\udf28\ufe0f",t:"Sn\u00f6blandat"},14:{e:"\ud83c\udf28\ufe0f",t:"Kraftigt sn\u00f6blandat"},
-  15:{e:"\ud83c\udf28\ufe0f",t:"L\u00e4tt sn\u00f6fall"},16:{e:"\u2744\ufe0f",t:"Sn\u00f6fall"},17:{e:"\u2744\ufe0f",t:"Kraftigt sn\u00f6fall"},
-  18:{e:"\ud83c\udf27\ufe0f",t:"L\u00e4tt regn"},19:{e:"\ud83c\udf27\ufe0f",t:"Regn"},20:{e:"\ud83c\udf27\ufe0f",t:"Kraftigt regn"},
-  21:{e:"\u26c8\ufe0f",t:"\u00c5ska"},22:{e:"\ud83c\udf28\ufe0f",t:"L\u00e4tt sn\u00f6blandat"},23:{e:"\ud83c\udf28\ufe0f",t:"Sn\u00f6blandat"},24:{e:"\ud83c\udf28\ufe0f",t:"Kraftigt sn\u00f6blandat"},
-  25:{e:"\ud83c\udf28\ufe0f",t:"L\u00e4tt sn\u00f6fall"},26:{e:"\u2744\ufe0f",t:"Sn\u00f6fall"},27:{e:"\u2744\ufe0f",t:"Kraftigt sn\u00f6fall"}
-}
+// WMO Weather codes -> emoji + description
+const WMO = {0:{e:"\u2600\ufe0f",t:"Klart"},1:{e:"\ud83c\udf24\ufe0f",t:"Mestadels klart"},2:{e:"\u26c5",t:"Halvklart"},3:{e:"\u2601\ufe0f",t:"Mulet"},45:{e:"\ud83c\udf2b\ufe0f",t:"Dimma"},48:{e:"\ud83c\udf2b\ufe0f",t:"Rimfrost"},51:{e:"\ud83c\udf26\ufe0f",t:"L\u00e4tt duggregn"},53:{e:"\ud83c\udf26\ufe0f",t:"Duggregn"},55:{e:"\ud83c\udf27\ufe0f",t:"Kraftigt duggregn"},61:{e:"\ud83c\udf26\ufe0f",t:"L\u00e4tt regn"},63:{e:"\ud83c\udf27\ufe0f",t:"Regn"},65:{e:"\ud83c\udf27\ufe0f",t:"Kraftigt regn"},66:{e:"\ud83c\udf28\ufe0f",t:"Underkylt regn"},67:{e:"\ud83c\udf28\ufe0f",t:"Kraftigt underkylt"},71:{e:"\ud83c\udf28\ufe0f",t:"L\u00e4tt sn\u00f6"},73:{e:"\u2744\ufe0f",t:"Sn\u00f6fall"},75:{e:"\u2744\ufe0f",t:"Kraftigt sn\u00f6fall"},77:{e:"\u2744\ufe0f",t:"Sn\u00f6korn"},80:{e:"\ud83c\udf26\ufe0f",t:"L\u00e4tt regnskur"},81:{e:"\ud83c\udf27\ufe0f",t:"Regnskur"},82:{e:"\ud83c\udf27\ufe0f",t:"Kraftig skur"},85:{e:"\ud83c\udf28\ufe0f",t:"L\u00e4tt sn\u00f6skur"},86:{e:"\u2744\ufe0f",t:"Kraftig sn\u00f6skur"},95:{e:"\u26c8\ufe0f",t:"\u00c5skv\u00e4der"},96:{e:"\u26c8\ufe0f",t:"\u00c5ska med hagel"},99:{e:"\u26c8\ufe0f",t:"Kraftig \u00e5ska"}}
 
-function getParam(entry, name) {
-  const p = entry.parameters.find(p => p.name === name)
-  return p ? p.values[0] : null
-}
-
-function parseSmhi(json) {
-  if (!json || !json.timeSeries) return null
-  const now = new Date()
-  // Find closest entry to now
-  let closest = json.timeSeries[0]
-  let minDiff = Infinity
-  json.timeSeries.forEach(e => {
-    const d = Math.abs(new Date(e.validTime) - now)
-    if (d < minDiff) { minDiff = d; closest = e }
-  })
-  const temp = Math.round(getParam(closest, "t"))
-  const wsymb = getParam(closest, "Wsymb2")
-  const wind = Math.round(getParam(closest, "ws"))
-  const w = WSYMB[wsymb] || {e:"\u2601\ufe0f",t:"Ok\u00e4nt"}
-
-  // Forecast: next 3 days at noon
+function parseWeather(json) {
+  if (!json || !json.current) return null
+  const temp = Math.round(json.current.temperature_2m)
+  const code = json.current.weathercode
+  const wind = Math.round(json.current.windspeed_10m / 3.6)
+  const w = WMO[code] || {e:"\u2601\ufe0f",t:"Ok\u00e4nt"}
   const forecast = []
-  for (let i = 1; i <= 3; i++) {
-    const target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i, 12, 0, 0)
-    let best = null, bestDiff = Infinity
-    json.timeSeries.forEach(e => {
-      const d = Math.abs(new Date(e.validTime) - target)
-      if (d < bestDiff) { bestDiff = d; best = e }
-    })
-    if (best) {
-      const ft = Math.round(getParam(best, "t"))
-      const fw = getParam(best, "Wsymb2")
-      const fi = WSYMB[fw] || {e:"\u2601\ufe0f",t:""}
-      const dayIdx = target.getDay()
-      forecast.push({day: WEEKDAYS_SHORT[dayIdx], icon: fi.e, temp: ft + "\u00b0"})
+  if (json.daily && json.daily.time) {
+    for (let i = 1; i < json.daily.time.length && forecast.length < 3; i++) {
+      const d = new Date(json.daily.time[i])
+      const fc = json.daily.weathercode[i]
+      const fi = WMO[fc] || {e:"\u2601\ufe0f",t:""}
+      forecast.push({day: WEEKDAYS_SHORT[d.getDay()], icon: fi.e, temp: Math.round(json.daily.temperature_2m_max[i]) + "\u00b0"})
     }
   }
-
-  return {temp, icon: w.e, desc: w.t, wind, forecast, location: SMHI_LOCATION}
+  return {temp, icon: w.e, desc: w.t, wind, forecast, location: WEATHER_LOCATION}
 }
 
 // ----- Helpers -----
@@ -370,14 +339,14 @@ export default function SmartHub({session,household}){
   const[weather,setWeather]=useState(null)
   const[loaded,setLoaded]=useState({todos:false,events:false,meals:false,layout:false})
 
-  // ----- Weather from SMHI -----
+  // ----- Weather from Open-Meteo -----
   useEffect(()=>{
     async function fetchWeather(){
       try{
-        const r=await fetch("https://opendata-download-metfcst.smhi.se/api/category/pmp3g/version/2/geotype/point/lon/"+SMHI_LON+"/lat/"+SMHI_LAT+"/data.json")
+        const r=await fetch("https://api.open-meteo.com/v1/forecast?latitude="+WEATHER_LAT+"&longitude="+WEATHER_LON+"&current=temperature_2m,weathercode,windspeed_10m&daily=weathercode,temperature_2m_max&timezone=Europe/Stockholm&forecast_days=4")
         if(!r.ok)return
         const json=await r.json()
-        const parsed=parseSmhi(json)
+        const parsed=parseWeather(json)
         if(parsed)setWeather(parsed)
       }catch(e){console.error("[weather]",e)}
     }
