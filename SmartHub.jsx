@@ -200,10 +200,9 @@ function WidgetMat({ meals }) {
   const now = new Date()
   const todayIdx = now.getDay() === 0 ? 6 : now.getDay() - 1
 
-  // Build a map day_of_week (0-6, where 0=Mon) -> description
-  // Assumption: db stores day_of_week 0-6 with 0=Mon. If your data uses Sunday=0, adjust here.
+  // Build a map: weekday 1-7 (1=Mon) -> meal_text, display index 0-6
   const byDay = {}
-  meals.forEach(m => { byDay[m.day_of_week] = m.description })
+  meals.forEach(m => { byDay[m.weekday - 1] = m.meal_text })
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", gap: 5 }}>
@@ -653,8 +652,14 @@ export default function SmartHub({ session, household }) {
     }
   }, [householdId])
 
-  // ----- Load meals (current ISO week) + realtime -----
-  const { week: currentWeek, year: currentYear } = useMemo(() => getISOWeek(new Date()), [])
+  // ----- Load meals (current week) + realtime -----
+  const currentWeekStart = useMemo(() => {
+    const now = new Date()
+    const day = now.getDay() // 0=Sun
+    const diff = day === 0 ? 6 : day - 1 // days since Monday
+    const mon = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diff)
+    return `${mon.getFullYear()}-${String(mon.getMonth() + 1).padStart(2, "0")}-${String(mon.getDate()).padStart(2, "0")}`
+  }, [])
 
   useEffect(() => {
     if (!householdId) return
@@ -665,8 +670,7 @@ export default function SmartHub({ session, household }) {
         .from("meals")
         .select("*")
         .eq("household_id", householdId)
-        .eq("week_number", currentWeek)
-        .eq("year", currentYear)
+        .eq("week_start_date", currentWeekStart)
 
       if (cancelled) return
       if (error) console.error("[meals] load:", error)
@@ -676,15 +680,14 @@ export default function SmartHub({ session, household }) {
     loadMeals()
 
     const ch = supabase
-      .channel(`meals:${householdId}:${currentYear}-${currentWeek}`)
+      .channel(`meals:${householdId}:${currentWeekStart}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "meals", filter: `household_id=eq.${householdId}` },
         payload => {
-          // Only react to current week
           const row = payload.new || payload.old
           if (!row) return
-          if (row.week_number !== currentWeek || row.year !== currentYear) return
+          if (row.week_start_date !== currentWeekStart) return
 
           setMeals(prev => {
             if (payload.eventType === "INSERT") {
@@ -707,7 +710,7 @@ export default function SmartHub({ session, household }) {
       cancelled = true
       supabase.removeChannel(ch)
     }
-  }, [householdId, currentWeek, currentYear])
+  }, [householdId, currentWeekStart])
 
   // ----- Toggle todo (writes to Supabase, realtime echoes back) -----
   async function handleToggleTodo(item) {
