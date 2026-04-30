@@ -268,7 +268,7 @@ export default function SmartHub({session,household}){
   const sharedTodos=todos.filter(t=>{const list=lists.find(l=>l.id===t.list_id);return!list||list.shared!==false})
   const widgetCtx={sharedTodos,onToggleTodo:handleToggleTodo,calEventsByDay,eventsToday,onDeleteEvent:handleDeleteEvent,meals,onUpsertMeal:handleUpsertMeal,weather}
 
-  return(<div style={{fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",background:BG,display:"flex",flexDirection:"column",height:"100dvh",position:"relative",overflow:"hidden",zoom:2.25}}>
+  return(<div style={{fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",background:BG,display:"flex",flexDirection:"column",height:"100dvh",position:"relative",overflow:"hidden"}}>
     <ClockHero bg={bg} onChangeBg={setBg} weather={weather}/>
     <div style={{display:"flex",borderBottom:"0.5px solid "+BORDER,background:CARD,flexShrink:0}}>{TABS.map(t=>(<button key={t.key} onClick={()=>setTab(t.key)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,background:"none",border:"none",cursor:"pointer",padding:"7px 0 9px",borderBottom:tab===t.key?"2px solid "+ACCENT:"2px solid transparent"}}><span style={{fontSize:17}}>{t.icon}</span><span style={{fontSize:10,fontWeight:500,color:tab===t.key?ACCENT:T3}}>{t.label}</span></button>))}</div>
     <div style={{flex:1,padding:10,minHeight:0,overflow:"hidden"}}>
