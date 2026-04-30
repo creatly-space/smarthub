@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react"
 import { supabase } from "./lib/supabase"
+import { Home, CalendarDays, ListChecks, UtensilsCrossed, Settings, MapPin, Wind, CloudSun, Menu as MenuIcon, Palette as PaletteIcon, Upload as UploadIcon, Check as CheckIcon, X as XIcon, ChevronUp, ChevronDown, Plus, Lock, Users } from "lucide-react"
 
 // ── Design tokens ──
 const ACCENT = "#a78bfa"
@@ -76,7 +77,7 @@ function AddEventModal({onSave,onClose}){
     <div style={{display:"flex",gap:8}}><input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} style={{...glassInput,flex:1}}/><input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} style={{...glassInput,flex:1}}/></div>
     <input value={location} onChange={e=>setLocation(e.target.value)} placeholder="Plats (valfritt)" style={glassInput}/>
     <div style={{display:"flex",gap:6}}>{EVENT_COLORS.map(c=>(<button key={c.color} onClick={()=>setColor(c.color)} style={{width:28,height:28,borderRadius:"50%",background:c.color,border:color===c.color?"3px solid #fff":"3px solid transparent",cursor:"pointer",padding:0,boxShadow:color===c.color?`0 0 10px ${c.color}40`:"none"}}/>))}</div>
-    <button onClick={()=>setShared(s=>!s)} style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"10px 14px",cursor:"pointer",color:txt.secondary,fontSize:12}}>{shared?"\ud83d\udc65 Delad med hush\u00e5llet":"\ud83d\udd12 Bara f\u00f6r mig"}</button>
+    <button onClick={()=>setShared(s=>!s)} style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"10px 14px",cursor:"pointer",color:txt.secondary,fontSize:12}}>{shared?<><Users size={14} strokeWidth={1.8} style={{marginRight:6}}/> Delad med hush\u00e5llet</>:<><Lock size={14} strokeWidth={1.8} style={{marginRight:6}}/> Bara f\u00f6r mig</>}</button>
     <button onClick={()=>{if(!title.trim())return;onSave({title:title.trim(),start_time:date+"T"+startTime+":00",end_time:date+"T"+endTime+":00",location:location.trim()||null,color,shared})}} style={{...glassBtn(false),opacity:title.trim()?1:0.4}}>L{"\u00e4"}gg till</button>
   </Glass></div>)
 }
@@ -87,7 +88,7 @@ function AddListModal({onSave,onClose}){
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><span style={{fontSize:16,fontWeight:600,color:txt.primary}}>Ny lista</span><button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:txt.tertiary,fontSize:13}}>Avbryt</button></div>
     <input value={name} onChange={e=>setName(e.target.value)} placeholder={"Namn p\u00e5 listan"} style={glassInput} autoFocus/>
     <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{LIST_COLORS.map(c=>(<button key={c} onClick={()=>setColor(c)} style={{width:26,height:26,borderRadius:"50%",background:c,border:color===c?"3px solid #fff":"3px solid transparent",cursor:"pointer",padding:0}}/>))}</div>
-    <button onClick={()=>setShared(s=>!s)} style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"10px 14px",cursor:"pointer",color:txt.secondary,fontSize:12}}>{shared?"\ud83d\udc65 Delad med hush\u00e5llet":"\ud83d\udd12 Privat lista"}</button>
+    <button onClick={()=>setShared(s=>!s)} style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"10px 14px",cursor:"pointer",color:txt.secondary,fontSize:12}}>{shared?<><Users size={14} strokeWidth={1.8} style={{marginRight:6}}/> Delad med hush\u00e5llet</>:<><Lock size={14} strokeWidth={1.8} style={{marginRight:6}}/> Privat lista</>}</button>
     <button onClick={()=>setHasExpiry(h=>!h)} style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"10px 14px",cursor:"pointer",color:txt.secondary,fontSize:12}}>{hasExpiry?"\u23f0 Utg\u00e5ngsdatum":"\u221e Ingen tidsgr\u00e4ns"}</button>
     {hasExpiry&&<input type="date" value={expiryDate} onChange={e=>setExpiryDate(e.target.value)} style={glassInput}/>}
     <button onClick={()=>{if(!name.trim())return;onSave({name:name.trim(),shared,color,expires_at:hasExpiry&&expiryDate?expiryDate+"T23:59:59":null})}} style={{...glassBtn(false),opacity:name.trim()?1:0.4}}>Skapa lista</button>
@@ -167,7 +168,7 @@ function EventsCard({eventsToday,onDelete}){
       <div style={{flex:1}}>
         <div style={{fontFamily:"'JetBrains Mono'",fontSize:10,color:txt.calTime}}>{e.start}</div>
         <div style={{fontSize:12,color:txt.primary,fontWeight:500,marginTop:2}}>{e.title}</div>
-        {e.location&&<div style={{fontSize:9,color:txt.muted,marginTop:2}}>{"\ud83d\udccd"} {e.location}</div>}
+        {e.location&&<div style={{fontSize:9,color:txt.muted,marginTop:2}}><MapPin size={9} strokeWidth={2} color={txt.muted} style={{flexShrink:0}}/> {e.location}</div>}
       </div>
       {onDelete&&<button onClick={()=>onDelete(e.id)} style={{background:"none",border:"none",cursor:"pointer",color:txt.muted,fontSize:14}}>{"\u00d7"}</button>}
     </GlassInner>))}
@@ -197,7 +198,7 @@ function ListsTab({lists,todos,onAddList,onDeleteList,onAddTodo,onToggleTodo,onD
         <div onClick={()=>setExpanded(p=>({...p,[list.id]:!p[list.id]}))} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",cursor:"pointer",borderBottom:isOpen?"1px solid rgba(255,255,255,0.05)":"none"}}>
           <div style={{width:4,height:24,borderRadius:2,background:list.color,flexShrink:0}}/>
           <div style={{flex:1}}>
-            <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:13,fontWeight:600,color:txt.primary}}>{list.name}</span>{!list.shared&&<span style={{fontSize:9,color:txt.muted}}>{"\ud83d\udd12"}</span>}</div>
+            <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:13,fontWeight:600,color:txt.primary}}>{list.name}</span>{!list.shared&&<span style={{fontSize:9,color:txt.muted}}><Lock size={10} strokeWidth={2} color={txt.muted}/></span>}</div>
             <div style={{display:"flex",gap:8,marginTop:2}}><span style={{fontSize:10,color:txt.tertiary}}>{remaining} kvar</span>{dl!==null&&<span style={{fontSize:10,color:dl<=2?RED:dl<=5?AMBER:txt.tertiary}}>{dl<=0?"Utg\u00e5ngen":dl+" dagar kvar"}</span>}</div>
           </div>
           <span style={{fontSize:12,color:txt.muted}}>{isOpen?"\u25b2":"\u25bc"}</span>
@@ -250,7 +251,7 @@ function FullKalTab({events,onAddEvent,onDeleteEvent}){
       <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:6}}>
         {events.filter(e=>new Date(e.start_time)>=new Date(new Date().setHours(0,0,0,0))).slice(0,10).map(ev=>(<GlassInner key={ev.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px"}}>
           <div style={{width:3,height:24,background:ev.color||ACCENT,borderRadius:2,flexShrink:0}}/>
-          <div style={{flex:1}}><div style={{fontSize:9,color:txt.calTime}}>{new Date(ev.start_time).toLocaleDateString("sv-SE")} {fmtTime(ev.start_time)}</div><div style={{fontSize:12,color:txt.primary,fontWeight:500}}>{ev.title}{ev.shared===false&&<span style={{fontSize:8,color:txt.muted,marginLeft:4}}>{"\ud83d\udd12"}</span>}</div></div>
+          <div style={{flex:1}}><div style={{fontSize:9,color:txt.calTime}}>{new Date(ev.start_time).toLocaleDateString("sv-SE")} {fmtTime(ev.start_time)}</div><div style={{fontSize:12,color:txt.primary,fontWeight:500}}>{ev.title}{ev.shared===false&&<span style={{fontSize:8,color:txt.muted,marginLeft:4}}><Lock size={10} strokeWidth={2} color={txt.muted}/></span>}</div></div>
           <button onClick={()=>onDeleteEvent(ev.id)} style={{background:"none",border:"none",cursor:"pointer",color:RED,fontSize:14}}>{"\u00d7"}</button>
         </GlassInner>))}
       </div>
@@ -317,11 +318,11 @@ function ClockHero({weather,bgUrl}){
 
 // ── Nav items ──
 const TABS=[
-  {key:"hem",label:"Hem",icon:"\u2302"},
-  {key:"kalender",label:"Kalender",icon:"\ud83d\udcc5"},
-  {key:"listor",label:"Listor",icon:"\u2611"},
-  {key:"mat",label:"Mat",icon:"\ud83c\udf7d"},
-  {key:"mer",label:"Mer",icon:"\u2699"},
+  {key:"hem",label:"Hem",Icon:Home},
+  {key:"kalender",label:"Kalender",Icon:CalendarDays},
+  {key:"listor",label:"Listor",Icon:ListChecks},
+  {key:"mat",label:"Mat",Icon:UtensilsCrossed},
+  {key:"mer",label:"Mer",Icon:Settings},
 ]
 
 // ════════════════════════════════════════════
@@ -394,7 +395,7 @@ export default function SmartHub({session,household}){
         <ClockHero weather={weather} bgUrl={bgUrl}/>
 
         {/* BG Picker button */}
-        <button onClick={()=>setShowPicker(p=>!p)} style={{position:"absolute",top:50,right:26,zIndex:10,background:"rgba(0,0,0,0.25)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:10,padding:"6px 8px",cursor:"pointer",fontSize:12,color:txt.tertiary}}>{"\ud83c\udfa8"}</button>
+        <button onClick={()=>setShowPicker(p=>!p)} style={{position:"absolute",top:50,right:26,zIndex:10,background:"rgba(0,0,0,0.25)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:10,padding:"6px 8px",cursor:"pointer",color:txt.tertiary}}><PaletteIcon size={14} strokeWidth={1.5} color={txt.tertiary}/></button>
 
         {showPicker&&(<Glass depth={3} style={{position:"absolute",top:82,right:26,padding:8,zIndex:30,minWidth:165,borderRadius:18}}>
           {BG_PRESETS.map((b,i)=>(<button key={b.id} onClick={()=>{setBgIdx(i);setCustomBg(null);setShowPicker(false)}} style={{display:"flex",alignItems:"center",gap:10,width:"100%",background:bgIdx===i?"rgba(255,255,255,0.08)":"transparent",border:bgIdx===i?"1px solid rgba(255,255,255,0.08)":"1px solid transparent",borderRadius:12,padding:"7px 10px",cursor:"pointer",marginBottom:2}}>
@@ -424,7 +425,7 @@ export default function SmartHub({session,household}){
         </div>
 
         {/* Floating nav button */}
-        {!navOpen&&(<button onClick={()=>setNavOpen(true)} style={{position:"absolute",bottom:24,left:"50%",transform:"translateX(-50%)",width:52,height:52,borderRadius:"50%",background:"rgba(255,255,255,0.07)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",border:"1px solid rgba(255,255,255,0.1)",boxShadow:"0 4px 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.08)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",animation:"fabPulse 3s ease-in-out infinite",zIndex:20,fontSize:18,color:txt.secondary}}>{"\u2630"}</button>)}
+        {!navOpen&&(<button onClick={()=>setNavOpen(true)} style={{position:"absolute",bottom:24,left:"50%",transform:"translateX(-50%)",width:52,height:52,borderRadius:"50%",background:"rgba(255,255,255,0.07)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",border:"1px solid rgba(255,255,255,0.1)",boxShadow:"0 4px 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.08)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",animation:"fabPulse 3s ease-in-out infinite",zIndex:20,color:txt.secondary}}><MenuIcon size={20} strokeWidth={1.8} color={txt.secondary}/></button>)}
 
         {/* Expanded nav */}
         {navOpen&&(<>
@@ -432,7 +433,7 @@ export default function SmartHub({session,household}){
           <div style={{position:"absolute",bottom:24,left:16,right:16,zIndex:50,animation:"navSlide 0.25s ease-out"}}>
             <Glass depth={3} style={{borderRadius:22,display:"flex",padding:4}}>
               {TABS.map(n=>{const active=tab===n.key;return(<button key={n.key} onClick={()=>{setTab(n.key);setNavOpen(false)}} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,background:active?"rgba(255,255,255,0.1)":"transparent",border:active?"1px solid rgba(255,255,255,0.08)":"1px solid transparent",boxShadow:active?"0 2px 10px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.08)":"none",borderRadius:18,cursor:"pointer",padding:"10px 0 11px",transition:"all 0.2s"}}>
-                <span style={{fontSize:16,opacity:active?0.9:0.3}}>{n.icon}</span>
+                <n.Icon size={18} strokeWidth={active?2:1.5} color={active?txt.primary:txt.tertiary} style={{transition:"all 0.2s"}}/>
                 <span style={{fontSize:9,fontWeight:600,color:active?txt.primary:txt.muted,letterSpacing:"0.05em",textTransform:"uppercase"}}>{n.label}</span>
               </button>)})}
             </Glass>
