@@ -67,6 +67,17 @@ const Label=({children})=><span style={{fontSize:10,fontWeight:700,color:"rgba(2
 const glassInput={width:"100%",padding:"10px 12px",fontSize:13,border:"1px solid rgba(255,255,255,0.1)",borderRadius:12,outline:"none",fontFamily:"inherit",background:"rgba(255,255,255,0.05)",color:txt.primary,boxSizing:"border-box"}
 const glassBtn=(active)=>({width:"100%",background:active?"rgba(255,255,255,0.08)":ACCENT,color:"#fff",border:active?"1px solid rgba(255,255,255,0.1)":"none",borderRadius:14,padding:"13px",fontSize:14,fontWeight:600,cursor:active?"not-allowed":"pointer",opacity:active?0.6:1})
 
+
+// ── Widget Registry ──
+const WIDGET_REGISTRY = {
+  calendar: { label: "Kalender", size: "full", icon: "\ud83d\udcc5" },
+  todo: { label: "Att g\u00f6ra", size: "half", icon: "\u2611\ufe0f" },
+  meal: { label: "Matsedel", size: "half", icon: "\ud83c\udf7d\ufe0f" },
+  weather: { label: "V\u00e4der", size: "half", icon: "\u2600\ufe0f" },
+  events: { label: "H\u00e4ndelser", size: "full", icon: "\ud83d\udccb" },
+}
+const DEFAULT_WIDGETS = ["calendar", "todo", "meal"]
+
 // ── Modals ──
 function AddEventModal({onSave,onClose}){
   const[title,setTitle]=useState("");const[date,setDate]=useState(fmtDate(new Date()));const[startTime,setStartTime]=useState("12:00");const[endTime,setEndTime]=useState("13:00");const[location,setLocation]=useState("");const[color,setColor]=useState(EVENT_COLORS[0].color);const[shared,setShared]=useState(true)
@@ -97,6 +108,9 @@ function AddListModal({onSave,onClose}){
 
 // ── Calendar widget (inline events) ──
 function CalendarCard({calEventsByDay}){
+  function handleAddWidget(id){setActiveWidgets(w=>[...w,id]);setWidgetPickerOpen(false)}
+  function handleRemoveWidget(id){setActiveWidgets(w=>w.filter(x=>x!==id))}
+
   const now=new Date();const[vm,setVm]=useState(now.getMonth());const[vy,setVy]=useState(now.getFullYear())
   const weeks=buildCal(vy,vm);const isToday=d=>d===now.getDate()&&vm===now.getMonth()&&vy===now.getFullYear()
   const eventsForView=(vm===now.getMonth()&&vy===now.getFullYear())?calEventsByDay:{}
@@ -124,6 +138,9 @@ function CalendarCard({calEventsByDay}){
 
 // ── Meal widget ──
 function MealCard({meals,onEdit}){
+  function handleAddWidget(id){setActiveWidgets(w=>[...w,id]);setWidgetPickerOpen(false)}
+  function handleRemoveWidget(id){setActiveWidgets(w=>w.filter(x=>x!==id))}
+
   const now=new Date();const todayIdx=now.getDay()===0?6:now.getDay()-1
   const[editingDay,setEditingDay]=useState(null);const[editText,setEditText]=useState("");const inputRef=useRef(null)
   const byDay={};meals.forEach(m=>{byDay[m.weekday-1]=m.meal_text})
@@ -220,6 +237,9 @@ function ListsTab({lists,todos,onAddList,onDeleteList,onAddTodo,onToggleTodo,onD
 
 // ── Full calendar tab ──
 function FullKalTab({events,onAddEvent,onDeleteEvent}){
+  function handleAddWidget(id){setActiveWidgets(w=>[...w,id]);setWidgetPickerOpen(false)}
+  function handleRemoveWidget(id){setActiveWidgets(w=>w.filter(x=>x!==id))}
+
   const now=new Date();const[vm,setVm]=useState(now.getMonth());const[vy,setVy]=useState(now.getFullYear())
   const weeks=buildCal(vy,vm);const isToday=d=>d===now.getDate()&&vm===now.getMonth()&&vy===now.getFullYear()
   const eventsByDay=useMemo(()=>groupEventsByDay(events,vy,vm),[events,vy,vm])
@@ -316,6 +336,62 @@ function ClockHero({weather,bgUrl}){
   </div>)
 }
 
+
+// ── Widget Picker ──
+function WidgetPicker({activeWidgets,onAdd,onClose}){
+  const available=Object.entries(WIDGET_REGISTRY).filter(([id])=>!activeWidgets.includes(id))
+  return(<div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)",zIndex:100,display:"flex",flexDirection:"column",justifyContent:"flex-end"}}><Glass depth={3} style={{borderRadius:"24px 24px 0 0",padding:"20px 16px 32px",display:"flex",flexDirection:"column",gap:12}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><span style={{fontSize:16,fontWeight:600,color:txt.primary}}>L\u00e4gg till widget</span><button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:txt.tertiary,fontSize:13}}>St\u00e4ng</button></div>
+    {available.length===0&&<span style={{fontSize:12,color:txt.muted}}>Alla widgets \u00e4r redan tillagda</span>}
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      {available.map(([id,w])=>(<button key={id} onClick={()=>onAdd(id)} style={{display:"flex",alignItems:"center",gap:12,background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:14,padding:"12px 16px",cursor:"pointer",width:"100%",textAlign:"left"}}>
+        <span style={{fontSize:22}}>{w.icon}</span>
+        <div style={{flex:1}}><div style={{fontSize:14,color:txt.primary,fontWeight:500}}>{w.label}</div><div style={{fontSize:11,color:txt.tertiary}}>{w.size==="full"?"Hel bredd":"Halv bredd"}</div></div>
+      </button>))}
+    </div>
+  </Glass></div>)
+}
+
+// ── Home Dashboard with widget system ──
+function HomeDashboard({activeWidgets,onRemoveWidget,calEventsByDay,sharedTodos,onToggleTodo,meals,onUpsertMeal,weather,eventsToday,onDeleteEvent}){
+  const renderWidget=(id)=>{
+    switch(id){
+      case"calendar":return <CalendarCard calEventsByDay={calEventsByDay}/>
+      case"todo":return <TodoCard todos={sharedTodos} onToggle={onToggleTodo}/>
+      case"meal":return <MealCard meals={meals} onEdit={onUpsertMeal}/>
+      case"weather":return <WeatherCard weather={weather}/>
+      case"events":return <EventsCard eventsToday={eventsToday} onDelete={onDeleteEvent}/>
+      default:return null
+    }
+  }
+
+  // Separate full and half widgets, render in order
+  const items=activeWidgets.map(id=>({id,size:WIDGET_REGISTRY[id]?.size||"half"}))
+  const rendered=[]
+  let halfBuf=[]
+
+  items.forEach((item,idx)=>{
+    if(item.size==="full"){
+      // Flush half buffer first
+      if(halfBuf.length>0){rendered.push({type:"grid",widgets:[...halfBuf]});halfBuf=[]}
+      rendered.push({type:"full",widget:item})
+    }else{
+      halfBuf.push(item)
+      if(halfBuf.length===2){rendered.push({type:"grid",widgets:[...halfBuf]});halfBuf=[]}
+    }
+  })
+  if(halfBuf.length>0)rendered.push({type:"grid",widgets:[...halfBuf]})
+
+  return(<>
+    {rendered.map((row,ri)=>{
+      if(row.type==="full")return <div key={ri}>{renderWidget(row.widget.id)}</div>
+      return(<div key={ri} style={{display:"grid",gridTemplateColumns:row.widgets.length===2?"1fr 1fr":"1fr",gap:10}}>
+        {row.widgets.map(w=><div key={w.id}>{renderWidget(w.id)}</div>)}
+      </div>)
+    })}
+  </>)
+}
+
 // ── Nav items ──
 const TABS=[
   {key:"hem",label:"Hem",Icon:Home},
@@ -332,10 +408,10 @@ export default function SmartHub({session,household}){
   const userId=session?.user?.id,householdId=household?.id
   const[tab,setTab]=useState("hem")
   const[bgIdx,setBgIdx]=useState(0);const[customBg,setCustomBg]=useState(null);const[showPicker,setShowPicker]=useState(false)
-  const[navOpen,setNavOpen]=useState(false)
+  const[navOpen,setNavOpen]=useState(false);const[widgetPickerOpen,setWidgetPickerOpen]=useState(false)
   const[eventModalOpen,setEventModalOpen]=useState(false);const[listModalOpen,setListModalOpen]=useState(false)
   const[lists,setLists]=useState([]);const[todos,setTodos]=useState([]);const[calEvents,setCalEvents]=useState([]);const[meals,setMeals]=useState([]);const[weather,setWeather]=useState(null)
-  const[loaded,setLoaded]=useState({todos:false,events:false,meals:false,lists:false})
+  const[loaded,setLoaded]=useState({todos:false,events:false,meals:false,lists:false});const[activeWidgets,setActiveWidgets]=useState(DEFAULT_WIDGETS)
   const fileRef=useRef(null)
 
   const bgUrl=bgIdx>=0?BG_PRESETS[bgIdx].url:customBg
@@ -343,6 +419,9 @@ export default function SmartHub({session,household}){
 
   // Weather
   useEffect(()=>{async function f(){try{const r=await fetch("https://api.open-meteo.com/v1/forecast?latitude="+WEATHER_LAT+"&longitude="+WEATHER_LON+"&current=temperature_2m,weathercode,windspeed_10m&daily=weathercode,temperature_2m_max&timezone=Europe/Stockholm&forecast_days=4");if(!r.ok)return;const j=await r.json();const p=parseWeather(j);if(p)setWeather(p)}catch(e){console.error("[weather]",e)}};f();const t=setInterval(f,30*60*1000);return()=>clearInterval(t)},[])
+
+  // Load saved widget layout
+  useEffect(()=>{if(!userId)return;let c=false;async function f(){const{data}=await supabase.from("layouts").select("assignments").eq("user_id",userId).maybeSingle();if(c)return;if(data&&data.assignments){if(Array.isArray(data.assignments))setActiveWidgets(data.assignments)}};f();return()=>{c=true}},[userId])
 
   // Lists
   useEffect(()=>{if(!householdId)return;let c=false;async function f(){const{data,error}=await supabase.from("lists").select("*").eq("household_id",householdId).order("created_at",{ascending:true});if(c)return;if(!error)setLists(data||[]);setLoaded(s=>({...s,lists:true}))};f();const ch=supabase.channel("lists:"+householdId).on("postgres_changes",{event:"*",schema:"public",table:"lists",filter:"household_id=eq."+householdId},p=>{setLists(prev=>{if(p.eventType==="INSERT")return prev.some(l=>l.id===p.new.id)?prev:[...prev,p.new];if(p.eventType==="UPDATE")return prev.map(l=>l.id===p.new.id?p.new:l);if(p.eventType==="DELETE")return prev.filter(l=>l.id!==p.old.id);return prev})}).subscribe();return()=>{c=true;supabase.removeChannel(ch)}},[householdId])
@@ -357,6 +436,9 @@ export default function SmartHub({session,household}){
   const currentWeekStart=useMemo(()=>{const now=new Date();const day=now.getDay();const diff=day===0?6:day-1;const mon=new Date(now.getFullYear(),now.getMonth(),now.getDate()-diff);return mon.getFullYear()+"-"+String(mon.getMonth()+1).padStart(2,"0")+"-"+String(mon.getDate()).padStart(2,"0")},[])
   useEffect(()=>{if(!householdId)return;let c=false;async function f(){const{data,error}=await supabase.from("meals").select("*").eq("household_id",householdId).eq("week_start_date",currentWeekStart);if(c)return;if(!error)setMeals(data||[]);setLoaded(s=>({...s,meals:true}))};f();const ch=supabase.channel("meals:"+householdId+":"+currentWeekStart).on("postgres_changes",{event:"*",schema:"public",table:"meals",filter:"household_id=eq."+householdId},p=>{const row=p.new||p.old;if(!row||row.week_start_date!==currentWeekStart)return;setMeals(prev=>{if(p.eventType==="INSERT")return prev.some(m=>m.id===p.new.id)?prev:[...prev,p.new];if(p.eventType==="UPDATE")return prev.map(m=>m.id===p.new.id?p.new:m);if(p.eventType==="DELETE")return prev.filter(m=>m.id!==p.old.id);return prev})}).subscribe();return()=>{c=true;supabase.removeChannel(ch)}},[householdId,currentWeekStart])
 
+  // Save widget layout
+  useEffect(()=>{if(!userId)return;const t=setTimeout(async()=>{await supabase.from("layouts").upsert({user_id:userId,assignments:activeWidgets,updated_at:new Date().toISOString()},{onConflict:"user_id"})},500);return()=>clearTimeout(t)},[userId,activeWidgets])
+
   // CRUD
   async function handleToggleTodo(item){const nd=!item.done;setTodos(p=>p.map(t=>t.id===item.id?{...t,done:nd,completed_at:nd?new Date().toISOString():null}:t));const{error}=await supabase.from("todos").update({done:nd,completed_at:nd?new Date().toISOString():null}).eq("id",item.id);if(error)setTodos(p=>p.map(t=>t.id===item.id?item:t))}
   async function handleAddTodo(text,listId){const tmp={id:"tmp-"+Date.now(),household_id:householdId,text,done:false,list_id:listId,shared:true,created_by:userId,created_at:new Date().toISOString()};setTodos(p=>[...p,tmp]);const{data,error}=await supabase.from("todos").insert({household_id:householdId,text,done:false,list_id:listId,created_by:userId}).select().single();if(error)setTodos(p=>p.filter(t=>t.id!==tmp.id));else setTodos(p=>p.map(t=>t.id===tmp.id?data:t))}
@@ -366,6 +448,9 @@ export default function SmartHub({session,household}){
   async function handleAddEvent(ev){await supabase.from("calendar_events").insert({household_id:householdId,title:ev.title,start_time:ev.start_time,end_time:ev.end_time,location:ev.location,color:ev.color,shared:ev.shared,created_by:userId});setEventModalOpen(false)}
   async function handleDeleteEvent(id){setCalEvents(p=>p.filter(e=>e.id!==id));await supabase.from("calendar_events").delete().eq("id",id)}
   async function handleUpsertMeal(weekday,text){if(!text){const ex=meals.find(m=>m.weekday===weekday);if(ex){setMeals(p=>p.filter(m=>m.id!==ex.id));await supabase.from("meals").delete().eq("id",ex.id)};return};const ex=meals.find(m=>m.weekday===weekday);if(ex){setMeals(p=>p.map(m=>m.id===ex.id?{...m,meal_text:text}:m));await supabase.from("meals").update({meal_text:text}).eq("id",ex.id)}else{const tmp={id:"tmp-"+Date.now(),household_id:householdId,week_start_date:currentWeekStart,weekday,meal_text:text};setMeals(p=>[...p,tmp]);const{data,error}=await supabase.from("meals").insert({household_id:householdId,week_start_date:currentWeekStart,weekday,meal_text:text}).select().single();if(error)setMeals(p=>p.filter(m=>m.id!==tmp.id));else setMeals(p=>p.map(m=>m.id===tmp.id?data:m))}}
+
+  function handleAddWidget(id){setActiveWidgets(w=>[...w,id]);setWidgetPickerOpen(false)}
+  function handleRemoveWidget(id){setActiveWidgets(w=>w.filter(x=>x!==id))}
 
   const now=new Date()
   const sharedEvents=calEvents.filter(e=>e.shared!==false)
@@ -412,11 +497,10 @@ export default function SmartHub({session,household}){
         {/* Content */}
         <div style={{flex:1,padding:"8px 16px 80px",display:"flex",flexDirection:"column",gap:10,overflowY:"auto",minHeight:0}}>
           {tab==="hem"&&(<>
-            <CalendarCard calEventsByDay={calEventsByDay}/>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-              <TodoCard todos={sharedTodos} onToggle={handleToggleTodo}/>
-              <MealCard meals={meals} onEdit={handleUpsertMeal}/>
-            </div>
+            <HomeDashboard activeWidgets={activeWidgets} onRemoveWidget={handleRemoveWidget} calEventsByDay={calEventsByDay} sharedTodos={sharedTodos} onToggleTodo={handleToggleTodo} meals={meals} onUpsertMeal={handleUpsertMeal} weather={weather} eventsToday={eventsToday} onDeleteEvent={handleDeleteEvent}/>
+            <button onClick={()=>setWidgetPickerOpen(true)} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",padding:"14px",background:"rgba(255,255,255,0.03)",border:"1px dashed rgba(255,255,255,0.1)",borderRadius:16,cursor:"pointer",color:txt.tertiary,fontSize:12,fontWeight:500,marginTop:4}}>
+              <Plus size={16} strokeWidth={2}/> L\u00e4gg till widget
+            </button>
           </>)}
           {tab==="kalender"&&<FullKalTab events={calEvents} onAddEvent={()=>setEventModalOpen(true)} onDeleteEvent={handleDeleteEvent}/>}
           {tab==="listor"&&<ListsTab lists={lists} todos={todos} onAddList={()=>setListModalOpen(true)} onDeleteList={handleDeleteList} onAddTodo={handleAddTodo} onToggleTodo={handleToggleTodo} onDeleteTodo={handleDeleteTodo}/>}
@@ -442,6 +526,7 @@ export default function SmartHub({session,household}){
       </div>
 
       {eventModalOpen&&<AddEventModal onSave={handleAddEvent} onClose={()=>setEventModalOpen(false)}/>}
+      {widgetPickerOpen&&<WidgetPicker activeWidgets={activeWidgets} onAdd={handleAddWidget} onClose={()=>setWidgetPickerOpen(false)}/>}
       {listModalOpen&&<AddListModal onSave={handleAddList} onClose={()=>setListModalOpen(false)}/>}
     </div>
   </>)
