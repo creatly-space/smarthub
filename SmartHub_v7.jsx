@@ -268,7 +268,10 @@ export default function SmartHub({session,household}){
   const sharedTodos=todos.filter(t=>{const list=lists.find(l=>l.id===t.list_id);return!list||list.shared!==false})
   const widgetCtx={sharedTodos,onToggleTodo:handleToggleTodo,calEventsByDay,eventsToday,onDeleteEvent:handleDeleteEvent,meals,onUpsertMeal:handleUpsertMeal,weather}
 
-  return(<div style={{fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",background:BG,display:"flex",flexDirection:"column",height:"100dvh",position:"relative",overflow:"hidden"}}>
+  const isTV = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("mode") === "tv"
+  const shellStyle = {fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",background:BG,display:"flex",flexDirection:"column",height:isTV?"100vh":"100dvh",position:"relative",overflow:"hidden",maxWidth:isTV?"none":"430px",margin:isTV?"0":"0 auto",boxShadow:isTV?"none":"0 0 40px rgba(0,0,0,0.06)",zoom:isTV?2.25:1}
+
+  return(<><style>{"body{background:#e8e7e4;margin:0;} @media(max-width:430px){body{background:"+BG+"}}"}</style><div style={shellStyle}>
     <ClockHero bg={bg} onChangeBg={setBg} weather={weather}/>
     <div style={{display:"flex",borderBottom:"0.5px solid "+BORDER,background:CARD,flexShrink:0}}>{TABS.map(t=>(<button key={t.key} onClick={()=>setTab(t.key)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,background:"none",border:"none",cursor:"pointer",padding:"7px 0 9px",borderBottom:tab===t.key?"2px solid "+ACCENT:"2px solid transparent"}}><span style={{fontSize:17}}>{t.icon}</span><span style={{fontSize:10,fontWeight:500,color:tab===t.key?ACCENT:T3}}>{t.label}</span></button>))}</div>
     <div style={{flex:1,padding:10,minHeight:0,overflow:"hidden"}}>
@@ -281,5 +284,5 @@ export default function SmartHub({session,household}){
     {editOpen&&<EditPanel layout={layoutId} assignments={assignments} onSave={handleSave} onClose={()=>setEditOpen(false)}/>}
     {eventModalOpen&&<AddEventModal onSave={handleAddEvent} onClose={()=>setEventModalOpen(false)}/>}
     {listModalOpen&&<AddListModal onSave={handleAddList} onClose={()=>setListModalOpen(false)}/>}
-  </div>)
+  </div></>)
 }
