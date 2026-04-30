@@ -110,6 +110,8 @@ function AddListModal({onSave,onClose}){
 function CalendarCard({calEventsByDay}){
   function handleAddWidget(id){setActiveWidgets(w=>[...w,id]);setWidgetPickerOpen(false)}
   function handleRemoveWidget(id){setActiveWidgets(w=>w.filter(x=>x!==id))}
+  function handleMoveWidget(id,dir){setActiveWidgets(w=>{const i=w.indexOf(id);if(i<0)return w;const ni=i+dir;if(ni<0||ni>=w.length)return w;const nw=[...w];[nw[i],nw[ni]]=[nw[ni],nw[i]];return nw})}
+  function handleResizeWidget(id){const r=WIDGET_REGISTRY[id];if(r)r.size=r.size==="full"?"half":"full";setActiveWidgets(w=>[...w])}
 
   const now=new Date();const[vm,setVm]=useState(now.getMonth());const[vy,setVy]=useState(now.getFullYear())
   const weeks=buildCal(vy,vm);const isToday=d=>d===now.getDate()&&vm===now.getMonth()&&vy===now.getFullYear()
@@ -140,6 +142,8 @@ function CalendarCard({calEventsByDay}){
 function MealCard({meals,onEdit}){
   function handleAddWidget(id){setActiveWidgets(w=>[...w,id]);setWidgetPickerOpen(false)}
   function handleRemoveWidget(id){setActiveWidgets(w=>w.filter(x=>x!==id))}
+  function handleMoveWidget(id,dir){setActiveWidgets(w=>{const i=w.indexOf(id);if(i<0)return w;const ni=i+dir;if(ni<0||ni>=w.length)return w;const nw=[...w];[nw[i],nw[ni]]=[nw[ni],nw[i]];return nw})}
+  function handleResizeWidget(id){const r=WIDGET_REGISTRY[id];if(r)r.size=r.size==="full"?"half":"full";setActiveWidgets(w=>[...w])}
 
   const now=new Date();const todayIdx=now.getDay()===0?6:now.getDay()-1
   const[editingDay,setEditingDay]=useState(null);const[editText,setEditText]=useState("");const inputRef=useRef(null)
@@ -239,6 +243,8 @@ function ListsTab({lists,todos,onAddList,onDeleteList,onAddTodo,onToggleTodo,onD
 function FullKalTab({events,onAddEvent,onDeleteEvent}){
   function handleAddWidget(id){setActiveWidgets(w=>[...w,id]);setWidgetPickerOpen(false)}
   function handleRemoveWidget(id){setActiveWidgets(w=>w.filter(x=>x!==id))}
+  function handleMoveWidget(id,dir){setActiveWidgets(w=>{const i=w.indexOf(id);if(i<0)return w;const ni=i+dir;if(ni<0||ni>=w.length)return w;const nw=[...w];[nw[i],nw[ni]]=[nw[ni],nw[i]];return nw})}
+  function handleResizeWidget(id){const r=WIDGET_REGISTRY[id];if(r)r.size=r.size==="full"?"half":"full";setActiveWidgets(w=>[...w])}
 
   const now=new Date();const[vm,setVm]=useState(now.getMonth());const[vy,setVy]=useState(now.getFullYear())
   const weeks=buildCal(vy,vm);const isToday=d=>d===now.getDate()&&vm===now.getMonth()&&vy===now.getFullYear()
@@ -353,7 +359,7 @@ function WidgetPicker({activeWidgets,onAdd,onClose}){
 }
 
 // ── Home Dashboard with widget system ──
-function HomeDashboard({activeWidgets,onRemoveWidget,calEventsByDay,sharedTodos,onToggleTodo,meals,onUpsertMeal,weather,eventsToday,onDeleteEvent}){
+function HomeDashboard({activeWidgets,editingWidgets,onRemoveWidget,onMoveWidget,onResizeWidget,calEventsByDay,sharedTodos,onToggleTodo,meals,onUpsertMeal,weather,eventsToday,onDeleteEvent}){
   const renderWidget=(id)=>{
     switch(id){
       case"calendar":return <CalendarCard calEventsByDay={calEventsByDay}/>
@@ -365,14 +371,29 @@ function HomeDashboard({activeWidgets,onRemoveWidget,calEventsByDay,sharedTodos,
     }
   }
 
-  // Separate full and half widgets, render in order
+  function WidgetWrapper({id,children}){
+    const idx=activeWidgets.indexOf(id)
+    const reg=WIDGET_REGISTRY[id]
+    const isFirst=idx===0,isLast=idx===activeWidgets.length-1
+    if(!editingWidgets)return children
+    return(<div style={{position:"relative"}}>
+      {children}
+      <div style={{position:"absolute",top:6,right:6,display:"flex",gap:4,zIndex:5}}>
+        {!isFirst&&<button onClick={()=>onMoveWidget(id,-1)} style={{width:22,height:22,borderRadius:"50%",background:"rgba(0,0,0,0.5)",border:"1px solid rgba(255,255,255,0.15)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#fff",fontSize:10,padding:0}}><ChevronUp size={12} strokeWidth={2.5}/></button>}
+        {!isLast&&<button onClick={()=>onMoveWidget(id,1)} style={{width:22,height:22,borderRadius:"50%",background:"rgba(0,0,0,0.5)",border:"1px solid rgba(255,255,255,0.15)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#fff",fontSize:10,padding:0}}><ChevronDown size={12} strokeWidth={2.5}/></button>}
+        <button onClick={()=>onResizeWidget(id)} style={{width:22,height:22,borderRadius:"50%",background:"rgba(0,0,0,0.5)",border:"1px solid rgba(255,255,255,0.15)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#fff",fontSize:9,padding:0}}>{reg?.size==="full"?"\u00bd":"1"}</button>
+        <button onClick={()=>onRemoveWidget(id)} style={{width:22,height:22,borderRadius:"50%",background:"rgba(220,50,50,0.8)",border:"none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",padding:0}}><XIcon size={11} strokeWidth={2.5} color="#fff"/></button>
+      </div>
+    </div>)
+  }
+
+  // Build layout from activeWidgets with current sizes
   const items=activeWidgets.map(id=>({id,size:WIDGET_REGISTRY[id]?.size||"half"}))
   const rendered=[]
   let halfBuf=[]
 
-  items.forEach((item,idx)=>{
+  items.forEach((item)=>{
     if(item.size==="full"){
-      // Flush half buffer first
       if(halfBuf.length>0){rendered.push({type:"grid",widgets:[...halfBuf]});halfBuf=[]}
       rendered.push({type:"full",widget:item})
     }else{
@@ -384,9 +405,9 @@ function HomeDashboard({activeWidgets,onRemoveWidget,calEventsByDay,sharedTodos,
 
   return(<>
     {rendered.map((row,ri)=>{
-      if(row.type==="full")return <div key={ri}>{renderWidget(row.widget.id)}</div>
+      if(row.type==="full")return <div key={ri}><WidgetWrapper id={row.widget.id}>{renderWidget(row.widget.id)}</WidgetWrapper></div>
       return(<div key={ri} style={{display:"grid",gridTemplateColumns:row.widgets.length===2?"1fr 1fr":"1fr",gap:10}}>
-        {row.widgets.map(w=><div key={w.id}>{renderWidget(w.id)}</div>)}
+        {row.widgets.map(w=><div key={w.id}><WidgetWrapper id={w.id}>{renderWidget(w.id)}</WidgetWrapper></div>)}
       </div>)
     })}
   </>)
@@ -408,7 +429,7 @@ export default function SmartHub({session,household}){
   const userId=session?.user?.id,householdId=household?.id
   const[tab,setTab]=useState("hem")
   const[bgIdx,setBgIdx]=useState(0);const[customBg,setCustomBg]=useState(null);const[showPicker,setShowPicker]=useState(false)
-  const[navOpen,setNavOpen]=useState(false);const[widgetPickerOpen,setWidgetPickerOpen]=useState(false)
+  const[navOpen,setNavOpen]=useState(false);const[widgetPickerOpen,setWidgetPickerOpen]=useState(false);const[editingWidgets,setEditingWidgets]=useState(false)
   const[eventModalOpen,setEventModalOpen]=useState(false);const[listModalOpen,setListModalOpen]=useState(false)
   const[lists,setLists]=useState([]);const[todos,setTodos]=useState([]);const[calEvents,setCalEvents]=useState([]);const[meals,setMeals]=useState([]);const[weather,setWeather]=useState(null)
   const[loaded,setLoaded]=useState({todos:false,events:false,meals:false,lists:false});const[activeWidgets,setActiveWidgets]=useState(DEFAULT_WIDGETS)
@@ -451,6 +472,8 @@ export default function SmartHub({session,household}){
 
   function handleAddWidget(id){setActiveWidgets(w=>[...w,id]);setWidgetPickerOpen(false)}
   function handleRemoveWidget(id){setActiveWidgets(w=>w.filter(x=>x!==id))}
+  function handleMoveWidget(id,dir){setActiveWidgets(w=>{const i=w.indexOf(id);if(i<0)return w;const ni=i+dir;if(ni<0||ni>=w.length)return w;const nw=[...w];[nw[i],nw[ni]]=[nw[ni],nw[i]];return nw})}
+  function handleResizeWidget(id){const r=WIDGET_REGISTRY[id];if(r)r.size=r.size==="full"?"half":"full";setActiveWidgets(w=>[...w])}
 
   const now=new Date()
   const sharedEvents=calEvents.filter(e=>e.shared!==false)
@@ -497,10 +520,15 @@ export default function SmartHub({session,household}){
         {/* Content */}
         <div style={{flex:1,padding:"8px 16px 80px",display:"flex",flexDirection:"column",gap:10,overflowY:"auto",minHeight:0}}>
           {tab==="hem"&&(<>
-            <HomeDashboard activeWidgets={activeWidgets} onRemoveWidget={handleRemoveWidget} calEventsByDay={calEventsByDay} sharedTodos={sharedTodos} onToggleTodo={handleToggleTodo} meals={meals} onUpsertMeal={handleUpsertMeal} weather={weather} eventsToday={eventsToday} onDeleteEvent={handleDeleteEvent}/>
-            <button onClick={()=>setWidgetPickerOpen(true)} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",padding:"14px",background:"rgba(255,255,255,0.03)",border:"1px dashed rgba(255,255,255,0.1)",borderRadius:16,cursor:"pointer",color:txt.tertiary,fontSize:12,fontWeight:500,marginTop:4}}>
-              <Plus size={16} strokeWidth={2}/> L\u00e4gg till widget
-            </button>
+            <HomeDashboard activeWidgets={activeWidgets} editingWidgets={editingWidgets} onRemoveWidget={handleRemoveWidget} onMoveWidget={handleMoveWidget} onResizeWidget={handleResizeWidget} calEventsByDay={calEventsByDay} sharedTodos={sharedTodos} onToggleTodo={handleToggleTodo} meals={meals} onUpsertMeal={handleUpsertMeal} weather={weather} eventsToday={eventsToday} onDeleteEvent={handleDeleteEvent}/>
+            <div style={{display:"flex",gap:8,marginTop:4}}>
+              <button onClick={()=>setWidgetPickerOpen(true)} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,flex:1,padding:"14px",background:"rgba(255,255,255,0.03)",border:"1px dashed rgba(255,255,255,0.1)",borderRadius:16,cursor:"pointer",color:txt.tertiary,fontSize:12,fontWeight:500}}>
+                <Plus size={16} strokeWidth={2}/> L\u00e4gg till
+              </button>
+              <button onClick={()=>setEditingWidgets(e=>!e)} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"14px 18px",background:editingWidgets?"rgba(167,139,250,0.15)":"rgba(255,255,255,0.03)",border:editingWidgets?"1px solid rgba(167,139,250,0.3)":"1px dashed rgba(255,255,255,0.1)",borderRadius:16,cursor:"pointer",color:editingWidgets?ACCENT:txt.tertiary,fontSize:12,fontWeight:500}}>
+                {editingWidgets?<><CheckIcon size={14} strokeWidth={2.5}/> Klar</>:<>Redigera</>}
+              </button>
+            </div>
           </>)}
           {tab==="kalender"&&<FullKalTab events={calEvents} onAddEvent={()=>setEventModalOpen(true)} onDeleteEvent={handleDeleteEvent}/>}
           {tab==="listor"&&<ListsTab lists={lists} todos={todos} onAddList={()=>setListModalOpen(true)} onDeleteList={handleDeleteList} onAddTodo={handleAddTodo} onToggleTodo={handleToggleTodo} onDeleteTodo={handleDeleteTodo}/>}
