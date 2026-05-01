@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react"
 import { supabase } from "./lib/supabase"
-import { Home, CalendarDays, ListChecks, UtensilsCrossed, Settings, MapPin, Wind, CloudSun, Menu as MenuIcon, Palette as PaletteIcon, Upload as UploadIcon, Check as CheckIcon, X as XIcon, ChevronUp, ChevronDown, Plus, Lock, Users } from "lucide-react"
+import { Home, CalendarDays, ListChecks, UtensilsCrossed, Settings, MapPin, Wind, CloudSun, CloudRain, CloudSnow, CloudLightning, CloudDrizzle, CloudFog, Sun, Cloud, Snowflake, Menu as MenuIcon, Palette as PaletteIcon, Upload as UploadIcon, Check as CheckIcon, X as XIcon, ChevronUp, ChevronDown, Plus, Lock, Users } from "lucide-react"
 
 // ── Design tokens ──
 const ACCENT = "#a78bfa"
@@ -36,7 +36,22 @@ const MEAL_DAYS=["M\u00e5n","Tis","Ons","Tor","Fre","L\u00f6r","S\u00f6n"]
 
 const WEATHER_LAT=56.66,WEATHER_LON=16.36,WEATHER_LOCATION="Kalmar"
 const WMO={0:{e:"\u2600\ufe0f",t:"Klart"},1:{e:"\ud83c\udf24\ufe0f",t:"Mestadels klart"},2:{e:"\u26c5",t:"Halvklart"},3:{e:"\u2601\ufe0f",t:"Mulet"},45:{e:"\ud83c\udf2b\ufe0f",t:"Dimma"},48:{e:"\ud83c\udf2b\ufe0f",t:"Rimfrost"},51:{e:"\ud83c\udf26\ufe0f",t:"L\u00e4tt duggregn"},53:{e:"\ud83c\udf26\ufe0f",t:"Duggregn"},55:{e:"\ud83c\udf27\ufe0f",t:"Kraftigt duggregn"},61:{e:"\ud83c\udf26\ufe0f",t:"L\u00e4tt regn"},63:{e:"\ud83c\udf27\ufe0f",t:"Regn"},65:{e:"\ud83c\udf27\ufe0f",t:"Kraftigt regn"},71:{e:"\ud83c\udf28\ufe0f",t:"L\u00e4tt sn\u00f6"},73:{e:"\u2744\ufe0f",t:"Sn\u00f6fall"},75:{e:"\u2744\ufe0f",t:"Kraftigt sn\u00f6fall"},80:{e:"\ud83c\udf26\ufe0f",t:"L\u00e4tt regnskur"},81:{e:"\ud83c\udf27\ufe0f",t:"Regnskur"},82:{e:"\ud83c\udf27\ufe0f",t:"Kraftig skur"},95:{e:"\u26c8\ufe0f",t:"\u00c5skv\u00e4der"},96:{e:"\u26c8\ufe0f",t:"\u00c5ska med hagel"},99:{e:"\u26c8\ufe0f",t:"Kraftig \u00e5ska"}}
-function parseWeather(json){if(!json||!json.current)return null;const temp=Math.round(json.current.temperature_2m);const code=json.current.weathercode;const wind=Math.round(json.current.windspeed_10m/3.6);const w=WMO[code]||{e:"\u2601\ufe0f",t:"Ok\u00e4nt"};const forecast=[];if(json.daily&&json.daily.time){for(let i=1;i<json.daily.time.length&&forecast.length<3;i++){const d=new Date(json.daily.time[i]);const fc=json.daily.weathercode[i];const fi=WMO[fc]||{e:"\u2601\ufe0f",t:""};forecast.push({day:WEEKDAYS_SHORT[d.getDay()],icon:fi.e,temp:Math.round(json.daily.temperature_2m_max[i])+"\u00b0"})}};return{temp,icon:w.e,desc:w.t,wind,forecast,location:WEATHER_LOCATION}}
+function parseWeather(json){if(!json||!json.current)return null;const temp=Math.round(json.current.temperature_2m);const code=json.current.weathercode;const wind=Math.round(json.current.windspeed_10m/3.6);const w=WMO[code]||{e:"\u2601\ufe0f",t:"Ok\u00e4nt"};const forecast=[];if(json.daily&&json.daily.time){for(let i=1;i<json.daily.time.length&&forecast.length<3;i++){const d=new Date(json.daily.time[i]);const fc=json.daily.weathercode[i];const fi=WMO[fc]||{e:"\u2601\ufe0f",t:""};forecast.push({day:WEEKDAYS_SHORT[d.getDay()],icon:fi.e,code:fc,temp:Math.round(json.daily.temperature_2m_max[i])+"\u00b0"})}};return{temp,icon:w.e,code,desc:w.t,wind,forecast,location:WEATHER_LOCATION}}
+
+function WmoIcon({code,size=20,color="rgba(255,255,255,0.7)"}){
+  const c2=Number(code)
+  if(c2===0)return <Sun size={size} strokeWidth={1.5} color={color}/>
+  if(c2<=2)return <CloudSun size={size} strokeWidth={1.5} color={color}/>
+  if(c2===3)return <Cloud size={size} strokeWidth={1.5} color={color}/>
+  if(c2>=45&&c2<=48)return <CloudFog size={size} strokeWidth={1.5} color={color}/>
+  if(c2>=51&&c2<=55)return <CloudDrizzle size={size} strokeWidth={1.5} color={color}/>
+  if(c2>=61&&c2<=67)return <CloudRain size={size} strokeWidth={1.5} color={color}/>
+  if(c2>=71&&c2<=77)return <Snowflake size={size} strokeWidth={1.5} color={color}/>
+  if(c2>=80&&c2<=82)return <CloudRain size={size} strokeWidth={1.5} color={color}/>
+  if(c2>=85&&c2<=86)return <CloudSnow size={size} strokeWidth={1.5} color={color}/>
+  if(c2>=95)return <CloudLightning size={size} strokeWidth={1.5} color={color}/>
+  return <Cloud size={size} strokeWidth={1.5} color={color}/>
+}
 
 // ── Helpers ──
 function fmtTime(iso){if(!iso)return"";const d=new Date(iso);return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")}
@@ -200,11 +215,11 @@ function EventsCard({eventsToday,onDelete}){
 function WeatherCard({weather}){
   if(!weather)return(<Glass depth={2} style={{padding:20,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{color:txt.muted,fontSize:11}}>Laddar v{"\u00e4"}der...</span></Glass>)
   return(<Glass depth={2} style={{padding:"14px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4}}>
-    <span style={{fontSize:32}}>{weather.icon}</span>
+    {weather.code!==undefined?<WmoIcon code={weather.code} size={36} color={txt.secondary}/>:<span style={{fontSize:32}}>{weather.icon}</span>}
     <span style={{fontFamily:"'Comfortaa'",fontSize:28,fontWeight:200,color:txt.primary}}>{weather.temp}{"\u00b0"}</span>
     <span style={{fontSize:10,color:txt.tertiary}}>{weather.desc} {"\u00b7"} {weather.location}</span>
     <span style={{fontSize:9,color:txt.muted}}>Vind: {weather.wind} m/s</span>
-    <div style={{display:"flex",gap:10,marginTop:6}}>{weather.forecast.map(w=>(<div key={w.day} style={{textAlign:"center"}}><div style={{fontSize:9,color:txt.tertiary}}>{w.day}</div><div style={{fontSize:14}}>{w.icon}</div><div style={{fontFamily:"'Comfortaa'",fontSize:10,color:txt.secondary}}>{w.temp}</div></div>))}</div>
+    <div style={{display:"flex",gap:10,marginTop:6}}>{weather.forecast.map(w=>(<div key={w.day} style={{textAlign:"center"}}><div style={{fontSize:9,color:txt.tertiary}}>{w.day}</div>{w.code!==undefined?<WmoIcon code={w.code} size={16} color={txt.tertiary}/>:<div style={{fontSize:14}}>{w.icon}</div>}<div style={{fontFamily:"'Comfortaa'",fontSize:10,color:txt.secondary}}>{w.temp}</div></div>))}</div>
   </Glass>)
 }
 
@@ -327,7 +342,7 @@ function ClockHero({weather,bgUrl}){
         <div style={{fontSize:14,color:txt.secondary,marginTop:8,textShadow:"0 1px 6px rgba(0,0,0,0.5)",fontWeight:500}}>{WEEKDAYS_SV[time.getDay()]} {"\u00b7"} {time.getDate()} {monthsShort[time.getMonth()]}</div>
       </div>
       <Glass depth={2} style={{borderRadius:20,padding:"12px 16px",textAlign:"center",minWidth:76}}>
-        <div style={{fontSize:24}}>{wi.icon}</div>
+        {wi.code!==undefined?<WmoIcon code={wi.code} size={26} color={txt.secondary}/>:<div style={{fontSize:24}}>{wi.icon}</div>}
         <div style={{fontFamily:"'Comfortaa'",fontSize:22,fontWeight:200,color:txt.primary,marginTop:4}}>{wi.temp}{"\u00b0"}</div>
         <div style={{fontSize:8,color:txt.tertiary,marginTop:2}}>{wi.desc}</div>
       </Glass>
@@ -335,7 +350,7 @@ function ClockHero({weather,bgUrl}){
     {weather&&weather.forecast&&(<div style={{position:"relative",display:"flex",gap:8,marginTop:14}}>
       {weather.forecast.map(w=>(<Glass key={w.day} depth={1} style={{padding:"7px 12px",textAlign:"center",minWidth:48,borderRadius:14}}>
         <div style={{fontSize:9,color:txt.secondary,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase"}}>{w.day}</div>
-        <div style={{fontSize:15,marginTop:3}}>{w.icon}</div>
+        {w.code!==undefined?<WmoIcon code={w.code} size={18} color={txt.secondary}/>:<div style={{fontSize:15,marginTop:3}}>{w.icon}</div>}
         <div style={{fontFamily:"'Comfortaa'",fontSize:11,color:txt.secondary,fontWeight:300,marginTop:2}}>{w.temp}</div>
       </Glass>))}
     </div>)}
@@ -351,7 +366,7 @@ function WidgetPicker({activeWidgets,onAdd,onClose}){
     {available.length===0&&<span style={{fontSize:12,color:txt.muted}}>Alla widgets \u00e4r redan tillagda</span>}
     <div style={{display:"flex",flexDirection:"column",gap:8}}>
       {available.map(([id,w])=>(<button key={id} onClick={()=>onAdd(id)} style={{display:"flex",alignItems:"center",gap:12,background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:14,padding:"12px 16px",cursor:"pointer",width:"100%",textAlign:"left"}}>
-        <span style={{fontSize:22}}>{w.icon}</span>
+        {w.code!==undefined?<WmoIcon code={w.code} size={18} color={txt.tertiary}/>:<span style={{fontSize:14}}>{w.icon}</span>}
         <div style={{flex:1}}><div style={{fontSize:14,color:txt.primary,fontWeight:500}}>{w.label}</div><div style={{fontSize:11,color:txt.tertiary}}>{w.size==="full"?"Hel bredd":"Halv bredd"}</div></div>
       </button>))}
     </div>
