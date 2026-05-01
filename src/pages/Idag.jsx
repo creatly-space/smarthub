@@ -1,1 +1,0 @@
-export default function Idag() { return (<div><div className="page-title">Idag</div><p className="page-subtitle">Dina events och påminnelser</p></div>) }

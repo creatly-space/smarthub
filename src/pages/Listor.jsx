@@ -1,1 +1,0 @@
-export default function Listor() { return (<div><div className="page-title">Listor</div><p className="page-subtitle">Inköp och uppgifter</p></div>) }

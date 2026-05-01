@@ -1,1 +1,0 @@
-export default function Kalender() { return (<div><div className="page-title">Kalender</div><p className="page-subtitle">Familjekalendern</p></div>) }
