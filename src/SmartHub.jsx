@@ -128,8 +128,8 @@ function CalendarCard({calEventsByDay}){
         const today=d&&isToday(d);const evs=d?(eventsForView[d]||[]):[]
         return(<td key={di} style={{verticalAlign:"top",padding:"3px 1px",textAlign:"center"}}>
           {d&&(<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:1,minHeight:evs.length>0?42:30}}>
-            <div style={{width:22,height:22,borderRadius:"50%",flexShrink:0,background:today?"rgba(167,139,250,0.5)":"transparent",boxShadow:today?"0 0 10px rgba(167,139,250,0.2)":"none",color:today?"#fff":di>=5?"rgba(167,139,250,0.6)":txt.secondary,fontSize:10,fontWeight:today?700:400,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'JetBrains Mono'"}}>{d}</div>
-            {evs.slice(0,2).map((ev,ei)=>(<div key={ei} style={{width:"100%",display:"flex",alignItems:"center",gap:1,paddingLeft:2,marginTop:1,borderLeft:`2px solid ${ev.color}`}}><span style={{fontSize:6.5,color:txt.calTime,fontFamily:"'JetBrains Mono'",flexShrink:0}}>{ev.time}</span><span style={{fontSize:6.5,color:txt.calEvent,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textAlign:"left"}}>{ev.title}</span></div>))}
+            <div style={{width:22,height:22,borderRadius:"50%",flexShrink:0,background:today?"rgba(167,139,250,0.5)":"transparent",boxShadow:today?"0 0 10px rgba(167,139,250,0.2)":"none",color:today?"#fff":di>=5?"rgba(167,139,250,0.6)":txt.secondary,fontSize:10,fontWeight:today?700:400,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Comfortaa'"}}>{d}</div>
+            {evs.slice(0,2).map((ev,ei)=>(<div key={ei} style={{width:"100%",display:"flex",alignItems:"center",gap:1,paddingLeft:2,marginTop:1,borderLeft:`2px solid ${ev.color}`}}><span style={{fontSize:6.5,color:txt.calTime,fontFamily:"'Comfortaa'",flexShrink:0}}>{ev.time}</span><span style={{fontSize:6.5,color:txt.calEvent,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textAlign:"left"}}>{ev.title}</span></div>))}
             {evs.length>2&&<div style={{fontSize:6,color:txt.muted}}>+{evs.length-2}</div>}
           </div>)}
         </td>)
@@ -154,7 +154,7 @@ function MealCard({meals,onEdit}){
     <Label>Matsedel</Label>
     <div style={{display:"flex",flexDirection:"column",gap:3,marginTop:10}}>
       {MEAL_DAYS.map((day,i)=>{const isToday=i===todayIdx;return(<div key={i} style={{display:"flex",gap:6,alignItems:"center",padding:isToday?"5px 8px":"3px 8px",borderRadius:9,background:isToday?"rgba(255,255,255,0.06)":"transparent",border:isToday?"1px solid rgba(255,255,255,0.06)":"1px solid transparent"}}>
-        <span style={{fontFamily:"'JetBrains Mono'",fontSize:9,fontWeight:isToday?600:400,color:isToday?txt.accent:txt.muted,minWidth:24,textAlign:"right"}}>{day}</span>
+        <span style={{fontFamily:"'Comfortaa'",fontSize:9,fontWeight:isToday?600:400,color:isToday?txt.accent:txt.muted,minWidth:24,textAlign:"right"}}>{day}</span>
         {editingDay===i?(<input ref={inputRef} value={editText} onChange={e=>setEditText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")saveEdit();if(e.key==="Escape")setEditingDay(null)}} onBlur={saveEdit} style={{...glassInput,padding:"4px 8px",fontSize:11,flex:1}}/>):(<span onClick={()=>startEdit(i)} style={{fontSize:11,color:isToday?txt.primary:txt.tertiary,fontWeight:isToday?600:400,flex:1,cursor:onEdit?"pointer":"default"}}>{byDay[i]||<span style={{color:txt.muted,fontStyle:"italic"}}>{onEdit?"Klicka...":"\u2014"}</span>}</span>)}
       </div>)})}
     </div>
@@ -167,7 +167,7 @@ function TodoCard({todos,onToggle}){
   return(<Glass depth={2} style={{padding:"14px 14px",display:"flex",flexDirection:"column"}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
       <Label>Att g{"\u00f6"}ra</Label>
-      <span style={{fontFamily:"'JetBrains Mono'",fontSize:9,fontWeight:500,color:GREEN,background:"rgba(74,222,128,0.08)",padding:"3px 9px",borderRadius:20,border:"1px solid rgba(74,222,128,0.08)"}}>{remaining}</span>
+      <span style={{fontFamily:"'Comfortaa'",fontSize:9,fontWeight:500,color:GREEN,background:"rgba(74,222,128,0.08)",padding:"3px 9px",borderRadius:20,border:"1px solid rgba(74,222,128,0.08)"}}>{remaining}</span>
     </div>
     <div style={{display:"flex",flexDirection:"column",gap:8}}>
       {todos.length===0&&<span style={{fontSize:11,color:txt.muted,fontStyle:"italic"}}>Inga uppgifter</span>}
@@ -187,7 +187,7 @@ function EventsCard({eventsToday,onDelete}){
     {eventsToday.map(e=>(<GlassInner key={e.id} style={{display:"flex",gap:10,alignItems:"center",padding:"10px 12px"}}>
       <div style={{width:3,height:28,borderRadius:2,background:e.color,flexShrink:0,boxShadow:`0 0 8px ${e.color}30`}}/>
       <div style={{flex:1}}>
-        <div style={{fontFamily:"'JetBrains Mono'",fontSize:10,color:txt.calTime}}>{e.start}</div>
+        <div style={{fontFamily:"'Comfortaa'",fontSize:10,color:txt.calTime}}>{e.start}</div>
         <div style={{fontSize:12,color:txt.primary,fontWeight:500,marginTop:2}}>{e.title}</div>
         {e.location&&<div style={{fontSize:9,color:txt.muted,marginTop:2}}><MapPin size={9} strokeWidth={2} color={txt.muted} style={{flexShrink:0}}/> {e.location}</div>}
       </div>
@@ -201,10 +201,10 @@ function WeatherCard({weather}){
   if(!weather)return(<Glass depth={2} style={{padding:20,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{color:txt.muted,fontSize:11}}>Laddar v{"\u00e4"}der...</span></Glass>)
   return(<Glass depth={2} style={{padding:"14px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4}}>
     <span style={{fontSize:32}}>{weather.icon}</span>
-    <span style={{fontFamily:"'JetBrains Mono'",fontSize:28,fontWeight:200,color:txt.primary}}>{weather.temp}{"\u00b0"}</span>
+    <span style={{fontFamily:"'Comfortaa'",fontSize:28,fontWeight:200,color:txt.primary}}>{weather.temp}{"\u00b0"}</span>
     <span style={{fontSize:10,color:txt.tertiary}}>{weather.desc} {"\u00b7"} {weather.location}</span>
     <span style={{fontSize:9,color:txt.muted}}>Vind: {weather.wind} m/s</span>
-    <div style={{display:"flex",gap:10,marginTop:6}}>{weather.forecast.map(w=>(<div key={w.day} style={{textAlign:"center"}}><div style={{fontSize:9,color:txt.tertiary}}>{w.day}</div><div style={{fontSize:14}}>{w.icon}</div><div style={{fontFamily:"'JetBrains Mono'",fontSize:10,color:txt.secondary}}>{w.temp}</div></div>))}</div>
+    <div style={{display:"flex",gap:10,marginTop:6}}>{weather.forecast.map(w=>(<div key={w.day} style={{textAlign:"center"}}><div style={{fontSize:9,color:txt.tertiary}}>{w.day}</div><div style={{fontSize:14}}>{w.icon}</div><div style={{fontFamily:"'Comfortaa'",fontSize:10,color:txt.secondary}}>{w.temp}</div></div>))}</div>
   </Glass>)
 }
 
@@ -264,8 +264,8 @@ function FullKalTab({events,onAddEvent,onDeleteEvent}){
           {week.map((d,di)=>{const evs=d?(eventsByDay[d]||[]):[];const today=d&&isToday(d)
             return(<td key={di} style={{padding:"3px 1px",verticalAlign:"top",textAlign:"center",background:today?"rgba(167,139,250,0.06)":"transparent"}}>
               {d&&(<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:1,minHeight:evs.length>0?42:28}}>
-                <div style={{width:22,height:22,borderRadius:"50%",background:today?"rgba(167,139,250,0.5)":"transparent",color:today?"#fff":di>=5?"rgba(167,139,250,0.6)":txt.secondary,fontSize:10,fontWeight:today?700:400,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'JetBrains Mono'"}}>{d}</div>
-                {evs.slice(0,2).map((ev,ei)=>(<div key={ei} style={{width:"100%",display:"flex",alignItems:"center",gap:1,paddingLeft:2,marginTop:1,borderLeft:`2px solid ${ev.color}`}}><span style={{fontSize:6.5,color:txt.calTime,fontFamily:"'JetBrains Mono'",flexShrink:0}}>{ev.time}</span><span style={{fontSize:6.5,color:txt.calEvent,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textAlign:"left"}}>{ev.title}</span></div>))}
+                <div style={{width:22,height:22,borderRadius:"50%",background:today?"rgba(167,139,250,0.5)":"transparent",color:today?"#fff":di>=5?"rgba(167,139,250,0.6)":txt.secondary,fontSize:10,fontWeight:today?700:400,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Comfortaa'"}}>{d}</div>
+                {evs.slice(0,2).map((ev,ei)=>(<div key={ei} style={{width:"100%",display:"flex",alignItems:"center",gap:1,paddingLeft:2,marginTop:1,borderLeft:`2px solid ${ev.color}`}}><span style={{fontSize:6.5,color:txt.calTime,fontFamily:"'Comfortaa'",flexShrink:0}}>{ev.time}</span><span style={{fontSize:6.5,color:txt.calEvent,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textAlign:"left"}}>{ev.title}</span></div>))}
               </div>)}
             </td>)
           })}
@@ -304,7 +304,7 @@ function SettingsTab({householdId,userId,householdName}){
       <Label>Bjud in</Label>
       {!inviteCode?(<button onClick={createInvite} disabled={creating} style={{...glassBtn(creating),marginTop:12}}>{creating?"Skapar kod...":"Skapa inbjudningskod"}</button>):(<div style={{textAlign:"center",marginTop:12}}>
         <div style={{fontSize:10,color:txt.tertiary,marginBottom:8}}>Dela denna kod</div>
-        <div onClick={copyCode} style={{fontFamily:"'JetBrains Mono'",fontSize:32,fontWeight:700,letterSpacing:"0.15em",color:ACCENT,cursor:"pointer",padding:"14px",background:"rgba(167,139,250,0.1)",borderRadius:16,marginBottom:8,border:"1px solid rgba(167,139,250,0.15)"}}>{inviteCode}</div>
+        <div onClick={copyCode} style={{fontFamily:"'Comfortaa'",fontSize:32,fontWeight:700,letterSpacing:"0.15em",color:ACCENT,cursor:"pointer",padding:"14px",background:"rgba(167,139,250,0.1)",borderRadius:16,marginBottom:8,border:"1px solid rgba(167,139,250,0.15)"}}>{inviteCode}</div>
         <div style={{fontSize:10,color:copied?GREEN:txt.muted}}>{copied?"Kopierad!":"Tryck f\u00f6r att kopiera \u00b7 Giltig i 7 dagar"}</div>
         <button onClick={()=>setInviteCode(null)} style={{marginTop:12,background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"8px 16px",fontSize:12,color:txt.secondary,cursor:"pointer"}}>Skapa ny kod</button>
       </div>)}
@@ -323,12 +323,12 @@ function ClockHero({weather,bgUrl}){
     <div style={{position:"absolute",top:0,left:0,right:0,bottom:0,background:"linear-gradient(180deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.1) 60%, transparent 100%)",pointerEvents:"none"}}/>
     <div style={{position:"relative",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
       <div>
-        <div style={{fontFamily:"'JetBrains Mono', monospace",fontSize:72,fontWeight:200,color:"#fff",letterSpacing:"-0.06em",lineHeight:0.85,textShadow:"0 2px 20px rgba(0,0,0,0.5)",fontVariantNumeric:"tabular-nums"}}>{h}<span style={{opacity:0.25}}>:</span>{m}</div>
+        <div style={{fontFamily:"'Comfortaa', sans-serif",fontSize:72,fontWeight:200,color:"#fff",letterSpacing:"-0.06em",lineHeight:0.85,textShadow:"0 2px 20px rgba(0,0,0,0.5)",fontVariantNumeric:"tabular-nums"}}>{h}<span style={{opacity:0.25}}>:</span>{m}</div>
         <div style={{fontSize:14,color:txt.secondary,marginTop:8,textShadow:"0 1px 6px rgba(0,0,0,0.5)",fontWeight:500}}>{WEEKDAYS_SV[time.getDay()]} {"\u00b7"} {time.getDate()} {monthsShort[time.getMonth()]}</div>
       </div>
       <Glass depth={2} style={{borderRadius:20,padding:"12px 16px",textAlign:"center",minWidth:76}}>
         <div style={{fontSize:24}}>{wi.icon}</div>
-        <div style={{fontFamily:"'JetBrains Mono'",fontSize:22,fontWeight:200,color:txt.primary,marginTop:4}}>{wi.temp}{"\u00b0"}</div>
+        <div style={{fontFamily:"'Comfortaa'",fontSize:22,fontWeight:200,color:txt.primary,marginTop:4}}>{wi.temp}{"\u00b0"}</div>
         <div style={{fontSize:8,color:txt.tertiary,marginTop:2}}>{wi.desc}</div>
       </Glass>
     </div>
@@ -336,7 +336,7 @@ function ClockHero({weather,bgUrl}){
       {weather.forecast.map(w=>(<Glass key={w.day} depth={1} style={{padding:"7px 12px",textAlign:"center",minWidth:48,borderRadius:14}}>
         <div style={{fontSize:9,color:txt.secondary,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase"}}>{w.day}</div>
         <div style={{fontSize:15,marginTop:3}}>{w.icon}</div>
-        <div style={{fontFamily:"'JetBrains Mono'",fontSize:11,color:txt.secondary,fontWeight:300,marginTop:2}}>{w.temp}</div>
+        <div style={{fontFamily:"'Comfortaa'",fontSize:11,color:txt.secondary,fontWeight:300,marginTop:2}}>{w.temp}</div>
       </Glass>))}
     </div>)}
   </div>)
@@ -488,10 +488,10 @@ export default function SmartHub({session,household}){
       @keyframes navSlide{from{opacity:0;transform:translateY(10px) scale(0.95)}to{opacity:1;transform:translateY(0) scale(1)}}
       @keyframes fabPulse{0%,100%{box-shadow:0 4px 20px rgba(0,0,0,0.3)}50%{box-shadow:0 4px 24px rgba(120,120,255,0.15)}}
       body{margin:0;background:#111}
-      @import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,100..1000&family=JetBrains+Mono:wght@200;300;400&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;600;700&family=Nunito:wght@300;400;600;700&display=swap');
     `}</style>
     <input ref={fileRef} type="file" accept="image/*" onChange={handleUpload} style={{display:"none"}}/>
-    <div style={{fontFamily:"'DM Sans', -apple-system, sans-serif",maxWidth:isTV?"none":"430px",margin:isTV?"0":"0 auto",height:isTV?"100vh":"100dvh",position:"relative",overflow:"hidden",boxShadow:isTV?"none":"0 0 60px rgba(0,0,0,0.3)",zoom:isTV?2.25:1}}>
+    <div style={{fontFamily:"'Nunito', -apple-system, sans-serif",maxWidth:isTV?"none":"430px",margin:isTV?"0":"0 auto",height:isTV?"100vh":"100dvh",position:"relative",overflow:"hidden",boxShadow:isTV?"none":"0 0 60px rgba(0,0,0,0.3)",zoom:isTV?2.25:1}}>
 
       {/* Background */}
       <div style={{position:"absolute",inset:-8,backgroundImage:`url(${bgUrl})`,backgroundSize:"cover",backgroundPosition:"center",filter:"scale(1.03)",transition:"background-image 0.8s ease"}}/>
