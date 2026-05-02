@@ -452,15 +452,21 @@ function HomeDashboard({activeWidgets,editingWidgets,onRemoveWidget,onMoveWidget
 }
 
 // ── TV Clock Widget ──
-function TvClockWidget(){
+function TvClockWidget({weather}){
   const[time,setTime]=useState(new Date())
   useEffect(()=>{const t=setInterval(()=>setTime(new Date()),1000);return()=>clearInterval(t)},[])
   const h=String(time.getHours()).padStart(2,"0"),m=String(time.getMinutes()).padStart(2,"0")
   const monthsShort=["jan","feb","mar","apr","maj","jun","jul","aug","sep","okt","nov","dec"]
-  return(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:"100%",padding:"0 8px"}}>
+  const wi=weather||{icon:"\u2601\ufe0f",temp:"--",desc:"Laddar..."}
+  return(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:"100%",padding:"0 16px"}}>
     <div>
-      <div style={{fontFamily:"'Comfortaa'",fontSize:48,fontWeight:300,color:"#fff",letterSpacing:"-0.04em",lineHeight:1,textShadow:"0 2px 12px rgba(0,0,0,0.3)"}}>{h}<span style={{opacity:0.25}}>:</span>{m}</div>
-      <div style={{fontSize:12,color:txt.secondary,marginTop:4,textShadow:"0 1px 4px rgba(0,0,0,0.3)"}}>{WEEKDAYS_SV[time.getDay()]} \u00b7 {time.getDate()} {monthsShort[time.getMonth()]}</div>
+      <div style={{fontFamily:"'Comfortaa'",fontSize:72,fontWeight:300,color:"#fff",letterSpacing:"-0.04em",lineHeight:1,textShadow:"0 2px 16px rgba(0,0,0,0.3)"}}>{h}<span style={{opacity:0.25}}>:</span>{m}</div>
+      <div style={{fontSize:18,color:txt.secondary,marginTop:8,textShadow:"0 1px 4px rgba(0,0,0,0.3)",fontWeight:500}}>{WEEKDAYS_SV[time.getDay()]} {"\u00b7"} {time.getDate()} {monthsShort[time.getMonth()]}</div>
+    </div>
+    <div style={{textAlign:"right"}}>
+      {wi.code!==undefined?<WmoIcon code={wi.code} size={40} color={txt.secondary}/>:<div style={{fontSize:36}}>{wi.icon}</div>}
+      <div style={{fontFamily:"'Comfortaa'",fontSize:32,fontWeight:300,color:txt.primary,marginTop:4}}>{wi.temp}{"\u00b0"}</div>
+      <div style={{fontSize:12,color:txt.tertiary,marginTop:2}}>{wi.desc}</div>
     </div>
   </div>)
 }
@@ -522,7 +528,7 @@ function TvEditor({householdId,tvWidgets,onSave,onClose,renderTvWidget}){
   return(<div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.7)",zIndex:100,display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
     <Glass depth={3} style={{borderRadius:"24px 24px 0 0",maxHeight:"92%",display:"flex",flexDirection:"column",padding:0}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}><Monitor size={16} color={txt.secondary}/><span style={{fontSize:15,fontWeight:600,color:txt.primary}}>Redigera TV-vy</span></div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}><Monitor size={16} color={txt.secondary}/><span style={{fontSize:15,fontWeight:600,color:txt.primary}}>Redigera TV-vy</span></div><div style={{fontSize:10,color:txt.muted}}>Exakt f\u00f6rhandsgranskning av TV:n</div>
         <div style={{display:"flex",gap:8}}>
           <button onClick={()=>onSave(widgets)} style={{display:"flex",alignItems:"center",gap:6,background:ACCENT,color:"#fff",border:"none",borderRadius:12,padding:"8px 16px",fontSize:12,fontWeight:600,cursor:"pointer"}}><Save size={13}/> Spara</button>
           <button onClick={onClose} style={{background:"none",border:"none",color:txt.tertiary,cursor:"pointer",fontSize:13}}>Avbryt</button>
@@ -616,7 +622,7 @@ function TvView({tvWidgets,calEventsByDay,sharedTodos,onToggleTodo,meals,onUpser
 
   function renderTvWidget(id){
     switch(id){
-      case"clock":return <TvClockWidget/>
+      case"clock":return <TvClockWidget weather={weather}/>
       case"calendar":return <CalendarCard calEventsByDay={calEventsByDay}/>
       case"todo":return <TodoCard todos={sharedTodos} onToggle={onToggleTodo}/>
       case"meal":return <MealCard meals={meals} onEdit={null}/>
@@ -626,12 +632,12 @@ function TvView({tvWidgets,calEventsByDay,sharedTodos,onToggleTodo,meals,onUpser
     }
   }
 
-  return(<div style={{fontFamily:"'Nunito', -apple-system, sans-serif",width:"100vw",height:"100vh",position:"relative",overflow:"hidden"}}>
+  return(<div style={{fontFamily:"'Nunito', -apple-system, sans-serif",width:"100vw",height:"100vh",position:"relative",overflow:"hidden",fontSize:16}}>
     <div style={{position:"absolute",inset:-8,backgroundImage:`url(${bgUrl})`,backgroundSize:"cover",backgroundPosition:"center",filter:"scale(1.03)"}}/>
     <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.15)"}}/>
-    <div style={{position:"relative",zIndex:1,width:"100%",height:"100%",display:"grid",gridTemplateColumns:"repeat("+COLS+",1fr)",gridTemplateRows:"repeat("+ROWS+",1fr)",gap:8,padding:12}}>
+    <div style={{position:"relative",zIndex:1,width:"100%",height:"100%",display:"grid",gridTemplateColumns:"repeat("+COLS+",1fr)",gridTemplateRows:"repeat("+ROWS+",1fr)",gap:12,padding:16}}>
       {widgets.map(w=>(<div key={w.id} style={{gridColumn:(w.x+1)+" / span "+w.w,gridRow:(w.y+1)+" / span "+w.h}}>
-        <Glass depth={2} style={{height:"100%",padding:10,display:"flex",flexDirection:"column"}}>
+        <Glass depth={2} style={{height:"100%",padding:16,display:"flex",flexDirection:"column",overflow:"auto"}}>
           {renderTvWidget(w.id)}
         </Glass>
       </div>))}
@@ -754,7 +760,7 @@ export default function SmartHub({session,household}){
 
   // TV MODE - render fullscreen grid
   if(isTV){
-    const tvBg=BG_PRESETS[0].url
+    const tvBg=customBg||BG_PRESETS[bgIdx>=0?bgIdx:0].url
     return(<>
       <style>{`body{margin:0;background:#111} @import url('https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;600;700&family=Nunito:wght@300;400;600;700&display=swap');`}</style>
       <TvView tvWidgets={tvWidgets} calEventsByDay={calEventsByDay} sharedTodos={sharedTodos} onToggleTodo={handleToggleTodo} meals={meals} onUpsertMeal={handleUpsertMeal} weather={weather} eventsToday={eventsToday} bgUrl={tvBg}/>
