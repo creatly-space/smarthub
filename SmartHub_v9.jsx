@@ -460,13 +460,13 @@ function TvClockWidget({weather}){
   const wi=weather||{icon:"\u2601\ufe0f",temp:"--",desc:"Laddar..."}
   return(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:"100%",padding:"0 16px"}}>
     <div>
-      <div style={{fontFamily:"'Comfortaa'",fontSize:72,fontWeight:300,color:"#fff",letterSpacing:"-0.04em",lineHeight:1,textShadow:"0 2px 16px rgba(0,0,0,0.3)"}}>{h}<span style={{opacity:0.25}}>:</span>{m}</div>
-      <div style={{fontSize:18,color:txt.secondary,marginTop:8,textShadow:"0 1px 4px rgba(0,0,0,0.3)",fontWeight:500}}>{WEEKDAYS_SV[time.getDay()]} {"\u00b7"} {time.getDate()} {monthsShort[time.getMonth()]}</div>
+      <div style={{fontFamily:"'Comfortaa'",fontSize:96,fontWeight:300,color:"#fff",letterSpacing:"-0.04em",lineHeight:1,textShadow:"0 2px 16px rgba(0,0,0,0.3)"}}>{h}<span style={{opacity:0.25}}>:</span>{m}</div>
+      <div style={{fontSize:22,color:txt.secondary,marginTop:10,textShadow:"0 1px 4px rgba(0,0,0,0.3)",fontWeight:500}}>{WEEKDAYS_SV[time.getDay()]} {"\u00b7"} {time.getDate()} {monthsShort[time.getMonth()]}</div>
     </div>
     <div style={{textAlign:"right"}}>
       {wi.code!==undefined?<WmoIcon code={wi.code} size={40} color={txt.secondary}/>:<div style={{fontSize:36}}>{wi.icon}</div>}
-      <div style={{fontFamily:"'Comfortaa'",fontSize:32,fontWeight:300,color:txt.primary,marginTop:4}}>{wi.temp}{"\u00b0"}</div>
-      <div style={{fontSize:12,color:txt.tertiary,marginTop:2}}>{wi.desc}</div>
+      <div style={{fontFamily:"'Comfortaa'",fontSize:42,fontWeight:300,color:txt.primary,marginTop:6}}>{wi.temp}{"\u00b0"}</div>
+      <div style={{fontSize:16,color:txt.tertiary,marginTop:2}}>{wi.desc}</div>
     </div>
   </div>)
 }
@@ -632,15 +632,31 @@ function TvView({tvWidgets,calEventsByDay,sharedTodos,onToggleTodo,meals,onUpser
     }
   }
 
-  return(<div style={{fontFamily:"'Nunito', -apple-system, sans-serif",width:"100vw",height:"100vh",position:"relative",overflow:"hidden",fontSize:16}}>
+  return(<div style={{fontFamily:"'Nunito', -apple-system, sans-serif",width:"100vw",height:"100vh",position:"fixed",top:0,left:0,overflow:"hidden"}}>
+    <style>{"body,html{margin:0;padding:0;overflow:hidden;width:100%;height:100%} button[style*='position: fixed']{display:none!important} *::-webkit-scrollbar{display:none}"}</style>
     <div style={{position:"absolute",inset:-8,backgroundImage:`url(${bgUrl})`,backgroundSize:"cover",backgroundPosition:"center",filter:"scale(1.03)"}}/>
     <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.15)"}}/>
-    <div style={{position:"relative",zIndex:1,width:"100%",height:"100%",display:"grid",gridTemplateColumns:"repeat("+COLS+",1fr)",gridTemplateRows:"repeat("+ROWS+",1fr)",gap:12,padding:16}}>
-      {widgets.map(w=>(<div key={w.id} style={{gridColumn:(w.x+1)+" / span "+w.w,gridRow:(w.y+1)+" / span "+w.h}}>
-        <Glass depth={2} style={{height:"100%",padding:16,display:"flex",flexDirection:"column",overflow:"auto"}}>
+    <div style={{position:"relative",zIndex:1,width:"100%",height:"100%",display:"flex",flexDirection:"column",gap:12,padding:16,boxSizing:"border-box"}}>
+      {/* Clock row */}
+      {widgets.filter(w=>w.id==="clock").map(w=>(<div key={w.id} style={{flexShrink:0}}>
+        <Glass depth={2} style={{padding:20,display:"flex",flexDirection:"column"}}>
           {renderTvWidget(w.id)}
         </Glass>
       </div>))}
+      {/* Calendar row */}
+      {widgets.filter(w=>w.id==="calendar").map(w=>(<div key={w.id} style={{flex:2,minHeight:0}}>
+        <Glass depth={2} style={{height:"100%",padding:16,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+          {renderTvWidget(w.id)}
+        </Glass>
+      </div>))}
+      {/* Bottom row - todo + meal side by side */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,flex:1,minHeight:0}}>
+        {widgets.filter(w=>w.id!=="clock"&&w.id!=="calendar").map(w=>(<div key={w.id}>
+          <Glass depth={2} style={{height:"100%",padding:16,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+            {renderTvWidget(w.id)}
+          </Glass>
+        </div>))}
+      </div>
     </div>
   </div>)
 }
@@ -762,7 +778,7 @@ export default function SmartHub({session,household}){
   if(isTV){
     const tvBg=customBg||BG_PRESETS[bgIdx>=0?bgIdx:0].url
     return(<>
-      <style>{`body{margin:0;background:#111} @import url('https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;600;700&family=Nunito:wght@300;400;600;700&display=swap');`}</style>
+      <style>{`body{margin:0;padding:0;background:#111;overflow:hidden} *::-webkit-scrollbar{display:none} html,body{width:100%;height:100%} @import url('https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;600;700&family=Nunito:wght@300;400;600;700&display=swap');`}</style>
       <TvView tvWidgets={tvWidgets} calEventsByDay={calEventsByDay} sharedTodos={sharedTodos} onToggleTodo={handleToggleTodo} meals={meals} onUpsertMeal={handleUpsertMeal} weather={weather} eventsToday={eventsToday} bgUrl={tvBg}/>
     </>)
   }
@@ -775,7 +791,7 @@ export default function SmartHub({session,household}){
     <style>{`
       @keyframes navSlide{from{opacity:0;transform:translateY(10px) scale(0.95)}to{opacity:1;transform:translateY(0) scale(1)}}
       @keyframes fabPulse{0%,100%{box-shadow:0 4px 20px rgba(0,0,0,0.3)}50%{box-shadow:0 4px 24px rgba(120,120,255,0.15)}}
-      body{margin:0;background:#111}
+      body{margin:0;padding:0;background:#111;overflow:hidden} *::-webkit-scrollbar{display:none} html,body{width:100%;height:100%}
       @import url('https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;600;700&family=Nunito:wght@300;400;600;700&display=swap');
     `}</style>
     <input ref={fileRef} type="file" accept="image/*" onChange={handleUpload} style={{display:"none"}}/>
