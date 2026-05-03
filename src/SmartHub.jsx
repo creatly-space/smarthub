@@ -460,13 +460,13 @@ function TvClockWidget({weather}){
   const wi=weather||{icon:"\u2601\ufe0f",temp:"--",desc:"Laddar..."}
   return(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:"100%",padding:"0 16px"}}>
     <div>
-      <div style={{fontFamily:"'Comfortaa'",fontSize:96,fontWeight:300,color:"#fff",letterSpacing:"-0.04em",lineHeight:1,textShadow:"0 2px 16px rgba(0,0,0,0.3)"}}>{h}<span style={{opacity:0.25}}>:</span>{m}</div>
-      <div style={{fontSize:22,color:txt.secondary,marginTop:10,textShadow:"0 1px 4px rgba(0,0,0,0.3)",fontWeight:500}}>{WEEKDAYS_SV[time.getDay()]} {"\u00b7"} {time.getDate()} {monthsShort[time.getMonth()]}</div>
+      <div style={{fontFamily:"'Comfortaa'",fontSize:52,fontWeight:300,color:"#fff",letterSpacing:"-0.04em",lineHeight:1,textShadow:"0 2px 16px rgba(0,0,0,0.3)"}}>{h}<span style={{opacity:0.25}}>:</span>{m}</div>
+      <div style={{fontSize:14,color:txt.secondary,marginTop:6,textShadow:"0 1px 4px rgba(0,0,0,0.3)",fontWeight:500}}>{WEEKDAYS_SV[time.getDay()]} {"\u00b7"} {time.getDate()} {monthsShort[time.getMonth()]}</div>
     </div>
     <div style={{textAlign:"right"}}>
       {wi.code!==undefined?<WmoIcon code={wi.code} size={40} color={txt.secondary}/>:<div style={{fontSize:36}}>{wi.icon}</div>}
-      <div style={{fontFamily:"'Comfortaa'",fontSize:42,fontWeight:300,color:txt.primary,marginTop:6}}>{wi.temp}{"\u00b0"}</div>
-      <div style={{fontSize:16,color:txt.tertiary,marginTop:2}}>{wi.desc}</div>
+      <div style={{fontFamily:"'Comfortaa'",fontSize:24,fontWeight:300,color:txt.primary,marginTop:4}}>{wi.temp}{"\u00b0"}</div>
+      <div style={{fontSize:11,color:txt.tertiary,marginTop:2}}>{wi.desc}</div>
     </div>
   </div>)
 }
@@ -632,27 +632,27 @@ function TvView({tvWidgets,calEventsByDay,sharedTodos,onToggleTodo,meals,onUpser
     }
   }
 
-  return(<div style={{fontFamily:"'Nunito', -apple-system, sans-serif",width:"100vw",height:"100vh",position:"fixed",top:0,left:0,right:0,bottom:0,overflow:"hidden",margin:0,padding:0,fontSize:20}}>
+  return(<div style={{fontFamily:"'Nunito', -apple-system, sans-serif",width:"50vw",height:"50vh",position:"fixed",top:0,left:0,overflow:"hidden",margin:0,padding:0,zoom:2,transformOrigin:"top left"}}>
     <style>{"html,body{margin:0!important;padding:0!important;overflow:hidden!important;width:100vw!important;height:100vh!important;border:none!important;outline:none!important} *::-webkit-scrollbar{display:none!important} button[style*='position']{display:none!important}"}</style>
     <div style={{position:"absolute",inset:0,backgroundImage:`url(${bgUrl})`,backgroundSize:"cover",backgroundPosition:"center"}}/>
     <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.12)"}}/>
-    <div style={{position:"absolute",inset:0,zIndex:1,display:"flex",flexDirection:"column",padding:20,gap:12,boxSizing:"border-box"}}>
+    <div style={{position:"absolute",inset:0,zIndex:1,display:"flex",flexDirection:"column",padding:12,gap:8,boxSizing:"border-box"}}>
       {/* Clock + Weather row */}
       {widgets.filter(w=>w.id==="clock").map(w=>(<div key={w.id} style={{flexShrink:0}}>
-        <Glass depth={2} style={{padding:"24px 28px"}}>
+        <Glass depth={2} style={{padding:"14px 18px"}}>
           {renderTvWidget(w.id)}
         </Glass>
       </div>))}
       {/* Calendar */}
       {widgets.filter(w=>w.id==="calendar").map(w=>(<div key={w.id} style={{flex:5,minHeight:0}}>
-        <Glass depth={2} style={{height:"100%",padding:"16px 20px",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+        <Glass depth={2} style={{height:"100%",padding:"10px 14px",display:"flex",flexDirection:"column",overflow:"hidden"}}>
           <div style={{flex:1,overflow:"hidden"}}>{renderTvWidget(w.id)}</div>
         </Glass>
       </div>))}
       {/* Bottom row */}
-      <div style={{display:"flex",gap:12,flex:3,minHeight:0}}>
+      <div style={{display:"flex",gap:8,flex:3,minHeight:0}}>
         {widgets.filter(w=>w.id!=="clock"&&w.id!=="calendar").map(w=>(<div key={w.id} style={{flex:1}}>
-          <Glass depth={2} style={{height:"100%",padding:"16px 20px",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+          <Glass depth={2} style={{height:"100%",padding:"10px 14px",display:"flex",flexDirection:"column",overflow:"hidden"}}>
             <div style={{flex:1,overflow:"hidden"}}>{renderTvWidget(w.id)}</div>
           </Glass>
         </div>))}
