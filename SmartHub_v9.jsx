@@ -632,28 +632,28 @@ function TvView({tvWidgets,calEventsByDay,sharedTodos,onToggleTodo,meals,onUpser
     }
   }
 
-  return(<div style={{fontFamily:"'Nunito', -apple-system, sans-serif",width:"100vw",height:"100vh",position:"fixed",top:0,left:0,overflow:"hidden"}}>
-    <style>{"body,html{margin:0;padding:0;overflow:hidden;width:100%;height:100%} button[style*='position: fixed']{display:none!important} *::-webkit-scrollbar{display:none}"}</style>
-    <div style={{position:"absolute",inset:-8,backgroundImage:`url(${bgUrl})`,backgroundSize:"cover",backgroundPosition:"center",filter:"scale(1.03)"}}/>
-    <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.15)"}}/>
-    <div style={{position:"relative",zIndex:1,width:"100%",height:"100%",display:"flex",flexDirection:"column",gap:12,padding:16,boxSizing:"border-box"}}>
-      {/* Clock row */}
+  return(<div style={{fontFamily:"'Nunito', -apple-system, sans-serif",width:"100vw",height:"100vh",position:"fixed",top:0,left:0,right:0,bottom:0,overflow:"hidden",margin:0,padding:0,fontSize:20}}>
+    <style>{"html,body{margin:0!important;padding:0!important;overflow:hidden!important;width:100vw!important;height:100vh!important;border:none!important;outline:none!important} *::-webkit-scrollbar{display:none!important} button[style*='position']{display:none!important}"}</style>
+    <div style={{position:"absolute",inset:0,backgroundImage:`url(${bgUrl})`,backgroundSize:"cover",backgroundPosition:"center"}}/>
+    <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.12)"}}/>
+    <div style={{position:"absolute",inset:0,zIndex:1,display:"flex",flexDirection:"column",padding:20,gap:12,boxSizing:"border-box"}}>
+      {/* Clock + Weather row */}
       {widgets.filter(w=>w.id==="clock").map(w=>(<div key={w.id} style={{flexShrink:0}}>
-        <Glass depth={2} style={{padding:20,display:"flex",flexDirection:"column"}}>
+        <Glass depth={2} style={{padding:"24px 28px"}}>
           {renderTvWidget(w.id)}
         </Glass>
       </div>))}
-      {/* Calendar row */}
-      {widgets.filter(w=>w.id==="calendar").map(w=>(<div key={w.id} style={{flex:2,minHeight:0}}>
-        <Glass depth={2} style={{height:"100%",padding:16,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-          {renderTvWidget(w.id)}
+      {/* Calendar */}
+      {widgets.filter(w=>w.id==="calendar").map(w=>(<div key={w.id} style={{flex:5,minHeight:0}}>
+        <Glass depth={2} style={{height:"100%",padding:"16px 20px",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+          <div style={{flex:1,overflow:"hidden"}}>{renderTvWidget(w.id)}</div>
         </Glass>
       </div>))}
-      {/* Bottom row - todo + meal side by side */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,flex:1,minHeight:0}}>
-        {widgets.filter(w=>w.id!=="clock"&&w.id!=="calendar").map(w=>(<div key={w.id}>
-          <Glass depth={2} style={{height:"100%",padding:16,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-            {renderTvWidget(w.id)}
+      {/* Bottom row */}
+      <div style={{display:"flex",gap:12,flex:3,minHeight:0}}>
+        {widgets.filter(w=>w.id!=="clock"&&w.id!=="calendar").map(w=>(<div key={w.id} style={{flex:1}}>
+          <Glass depth={2} style={{height:"100%",padding:"16px 20px",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+            <div style={{flex:1,overflow:"hidden"}}>{renderTvWidget(w.id)}</div>
           </Glass>
         </div>))}
       </div>
