@@ -299,9 +299,7 @@ function TvView({tvWidgets,calEventsByDay,sharedTodos,onToggleTodo,meals,weather
 
   return(<div style={{fontFamily:"'Nunito', sans-serif",width:540,height:960,position:"fixed",top:0,left:0,overflow:"hidden",zoom:2,transformOrigin:"top left",color:t.text}}>
     <style>{"html,body{margin:0!important;padding:0!important;overflow:hidden!important;background:#000!important} *::-webkit-scrollbar{display:none!important}"}</style>
-    <div style={{position:"absolute",top:0,left:0,right:0,height:200,backgroundImage:`url(${bgUrl})`,backgroundSize:"cover",backgroundPosition:"center 30%"}}/>
-    <div style={{position:"absolute",top:0,left:0,right:0,height:200,background:"linear-gradient(180deg, rgba(240,242,245,0.0) 0%, rgba(240,242,245,0.6) 50%, #f0f2f5 100%)"}}/>
-    <div style={{position:"absolute",top:200,left:0,right:0,bottom:0,background:t.bg}}/>
+    
 
     <div style={{position:"absolute",inset:0,zIndex:1,display:"flex",flexDirection:"column",padding:16,gap:10,boxSizing:"border-box"}}>
       {/* Clock + Weather */}
