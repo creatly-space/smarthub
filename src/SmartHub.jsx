@@ -89,7 +89,8 @@ function daysLeft(d) { if (!d) return null; return Math.ceil((new Date(d) - new 
 function detectView() {
   if (typeof window === "undefined") return "desktop"
   const params = new URLSearchParams(window.location.search)
-  if (params.get("view") === "tv") return "tv"
+  // Stöd både ?mode=tv (används av Raspberry Pi-kiosken) och ?view=tv (alternativ)
+  if (params.get("mode") === "tv" || params.get("view") === "tv") return "tv"
   const w = window.innerWidth
   if (w < 768) return "mobile"
   return "desktop"
@@ -996,7 +997,7 @@ function TvEditorSection({ onBack, isMobile, tvData }) {
       <SectionHeader title="TV-vy preview" onBack={onBack} />
       <p style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, color: t.textSec, margin: "0 0 16px" }}>
         Så här ser TV-vyn ut just nu — exakt samma layout som visas på TV:n (1080×1920),
-        med din riktiga data. Öppna <code style={{ background: t.inputBg, padding: "1px 6px", borderRadius: 4 }}>?view=tv</code> i URL:en på en TV-skärm för fullskärmsläge.
+        med din riktiga data. Raspberry Pi-kiosken laddar <code style={{ background: t.inputBg, padding: "1px 6px", borderRadius: 4 }}>?mode=tv</code> i URL:en för fullskärmsläge.
       </p>
       <div style={{ display: "flex", justifyContent: "center", padding: "8px 0 24px" }}>
         <TvPreview scale={scale} {...tvData} />
