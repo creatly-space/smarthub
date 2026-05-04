@@ -116,18 +116,18 @@ function AddListModal({onSave,onClose}){
 }
 
 // ── Calendar Card ──
-function CalendarCard({calEventsByDay,accent}){
+function CalendarCard({calEventsByDay,accent,fill}){
   const now=new Date();const[vm,setVm]=useState(now.getMonth());const[vy,setVy]=useState(now.getFullYear())
   const weeks=buildCal(vy,vm);const isToday=d=>d===now.getDate()&&vm===now.getMonth()&&vy===now.getFullYear()
   const eventsForView=(vm===now.getMonth()&&vy===now.getFullYear())?calEventsByDay:{}
   const ac=accent||ACCENT
-  return(<Card accent={ac} style={{padding:"14px 14px"}}>
+  return(<Card accent={ac} style={{padding:"14px 14px",...(fill?{height:"100%",display:"flex",flexDirection:"column",boxSizing:"border-box"}:{})}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
       <button onClick={()=>{if(vm===0){setVm(11);setVy(y=>y-1)}else setVm(m=>m-1)}} style={{background:"none",border:"none",cursor:"pointer",color:t.textMuted,padding:4}}><ChevronLeft size={16}/></button>
       <Label color={ac}>{MONTHS_FULL[vm]} {vy}</Label>
       <button onClick={()=>{if(vm===11){setVm(0);setVy(y=>y+1)}else setVm(m=>m+1)}} style={{background:"none",border:"none",cursor:"pointer",color:t.textMuted,padding:4}}><ChevronRight size={16}/></button>
     </div>
-    <table style={{width:"100%",borderCollapse:"collapse",tableLayout:"fixed"}}>
+    <table style={{width:"100%",borderCollapse:"collapse",tableLayout:"fixed",flex:fill?1:undefined}}>
       <thead><tr>{CAL_DAYS.map((d,i)=>(
         <th key={i} style={{fontSize:9,color:i>=5?ac+"90":t.textMuted,fontWeight:600,textAlign:"center",padding:"4px 0"}}>{d}</th>
       ))}</tr></thead>
@@ -149,16 +149,16 @@ function CalendarCard({calEventsByDay,accent}){
 }
 
 // ── Meal Card ──
-function MealCard({meals,onEdit,accent}){
+function MealCard({meals,onEdit,accent,fill}){
   const now=new Date();const todayIdx=now.getDay()===0?6:now.getDay()-1
   const[editingDay,setEditingDay]=useState(null);const[editText,setEditText]=useState("");const inputRef=useRef(null)
   const byDay={};meals.forEach(m=>{byDay[m.weekday-1]=m.meal_text})
   const ac=accent||AMBER
   function startEdit(i){if(!onEdit)return;setEditingDay(i);setEditText(byDay[i]||"");setTimeout(()=>inputRef.current?.focus(),50)}
   function saveEdit(){if(editingDay===null)return;onEdit(editingDay+1,editText.trim());setEditingDay(null);setEditText("")}
-  return(<Card accent={ac} style={{padding:"14px 14px",display:"flex",flexDirection:"column"}}>
+  return(<Card accent={ac} style={{padding:"14px 14px",display:"flex",flexDirection:"column",...(fill?{height:"100%",boxSizing:"border-box"}:{})}}>
     <Label color={ac}>Matsedel</Label>
-    <div style={{display:"flex",flexDirection:"column",gap:3,marginTop:10}}>
+    <div style={{display:"flex",flexDirection:"column",gap:3,marginTop:10,flex:1,justifyContent:fill?"space-between":"flex-start"}}>
       {MEAL_DAYS.map((day,i)=>{const isToday=i===todayIdx;return(<div key={i} style={{display:"flex",gap:8,alignItems:"center",padding:isToday?"5px 8px":"3px 8px",borderRadius:8,background:isToday?ac+"10":"transparent",border:isToday?`1px solid ${ac}18`:"1px solid transparent"}}>
         <span style={{fontFamily:"'Comfortaa'",fontSize:10,fontWeight:isToday?700:400,color:isToday?ac:t.textMuted,minWidth:26,textAlign:"right"}}>{day}</span>
         {editingDay===i?(<input ref={inputRef} value={editText} onChange={e=>setEditText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")saveEdit();if(e.key==="Escape")setEditingDay(null)}} onBlur={saveEdit} style={{...inputStyle,padding:"4px 8px",fontSize:12,flex:1}}/>):(<span onClick={()=>startEdit(i)} style={{fontSize:12,color:isToday?t.text:t.textSec,fontWeight:isToday?600:400,flex:1,cursor:onEdit?"pointer":"default"}}>{byDay[i]||<span style={{color:t.textMuted,fontStyle:"italic"}}>{onEdit?"Klicka...":"\u2014"}</span>}</span>)}
@@ -168,14 +168,14 @@ function MealCard({meals,onEdit,accent}){
 }
 
 // ── Todo Card ──
-function TodoCard({todos,onToggle,accent}){
+function TodoCard({todos,onToggle,accent,fill}){
   const remaining=todos.filter(i=>!i.done).length;const ac=accent||GREEN
-  return(<Card accent={ac} style={{padding:"14px 14px",display:"flex",flexDirection:"column"}}>
+  return(<Card accent={ac} style={{padding:"14px 14px",display:"flex",flexDirection:"column",...(fill?{height:"100%",boxSizing:"border-box"}:{})}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
       <Label color={ac}>Att g{"\u00f6"}ra</Label>
       <span style={{fontSize:10,fontWeight:700,color:ac,background:ac+"15",padding:"2px 8px",borderRadius:10}}>{remaining}</span>
     </div>
-    <div style={{display:"flex",flexDirection:"column",gap:7}}>
+    <div style={{display:"flex",flexDirection:"column",gap:7,flex:1}}>
       {todos.length===0&&<span style={{fontSize:12,color:t.textMuted,fontStyle:"italic"}}>Inga uppgifter</span>}
       {todos.slice(0,6).map(td=>(<div key={td.id} style={{display:"flex",alignItems:"center",gap:8}}>
         <div onClick={()=>onToggle(td)} style={{width:18,height:18,borderRadius:"50%",border:td.done?"none":`2px solid ${t.inputBorder}`,background:td.done?ac:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",fontSize:10,color:"#fff",fontWeight:700}}>{td.done?"✓":""}</div>
@@ -301,6 +301,7 @@ function TvView({tvWidgets,calEventsByDay,sharedTodos,onToggleTodo,meals,weather
     <style>{"html,body{margin:0!important;padding:0!important;overflow:hidden!important;background:#000!important} *::-webkit-scrollbar{display:none!important}"}</style>
     
 
+    <div style={{position:"absolute",inset:0,background:t.bg}}/>
     <div style={{position:"absolute",inset:0,zIndex:1,display:"flex",flexDirection:"column",padding:16,gap:10,boxSizing:"border-box"}}>
       {/* Clock + Weather */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"8px 4px",flexShrink:0}}>
@@ -325,12 +326,12 @@ function TvView({tvWidgets,calEventsByDay,sharedTodos,onToggleTodo,meals,weather
       </div>
 
       {/* Calendar */}
-      <div style={{flex:5,minHeight:0}}><CalendarCard calEventsByDay={calEventsByDay}/></div>
+      <div style={{flex:5,minHeight:0,display:"flex",flexDirection:"column"}}><div style={{flex:1,minHeight:0}}><CalendarCard calEventsByDay={calEventsByDay} fill/></div></div>
 
       {/* Bottom row */}
       <div style={{display:"flex",gap:10,flex:3,minHeight:0}}>
-        <div style={{flex:1}}><TodoCard todos={sharedTodos} onToggle={onToggleTodo}/></div>
-        <div style={{flex:1}}><MealCard meals={meals} onEdit={null}/></div>
+        <div style={{flex:1,display:"flex",flexDirection:"column"}}><TodoCard todos={sharedTodos} onToggle={onToggleTodo} fill/></div>
+        <div style={{flex:1,display:"flex",flexDirection:"column"}}><MealCard meals={meals} onEdit={null} fill/></div>
       </div>
     </div>
   </div>)
