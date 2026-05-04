@@ -965,13 +965,36 @@ function FoodPrefsSection({ onBack, foodPrefs, setFoodPrefs }) {
   )
 }
 
+const TV_WIDGET_META = {
+  clock:    { name: "Klocka",    color: t.textSec },
+  calendar: { name: "Kalender",  color: ACCENT.calendar },
+  todo:     { name: "Att göra",  color: ACCENT.todo },
+  meal:     { name: "Matsedel",  color: ACCENT.meal },
+  weather:  { name: "Väder",     color: ACCENT.weather },
+  events:   { name: "Händelser", color: ACCENT.event },
+}
+function normalizeTvWidget(w) {
+  const meta = TV_WIDGET_META[w.id] || { name: w.id || "Widget", color: t.textSec }
+  return {
+    id: w.id,
+    name: w.name || meta.name,
+    color: w.color || meta.color,
+    row: w.row !== undefined ? w.row : (w.y !== undefined ? w.y : 0),
+    col: w.col !== undefined ? w.col : (w.x !== undefined ? w.x : 0),
+    w: w.w || 1,
+    h: w.h || 1,
+  }
+}
+
 function TvEditorSection({ onBack, isMobile, tvWidgets, onSaveTvLayout }) {
-  const initial = tvWidgets || [
-    { id: "clock", name: "Klocka", color: t.textSec, row: 0, col: 0, w: 4, h: 1 },
-    { id: "calendar", name: "Kalender", color: ACCENT.calendar, row: 1, col: 0, w: 4, h: 3 },
-    { id: "todo", name: "Att göra", color: ACCENT.todo, row: 4, col: 0, w: 2, h: 2 },
-    { id: "meal", name: "Matsedel", color: ACCENT.meal, row: 4, col: 2, w: 2, h: 2 },
-  ]
+  const initial = (tvWidgets && tvWidgets.length > 0)
+    ? tvWidgets.map(normalizeTvWidget)
+    : [
+      { id: "clock", name: "Klocka", color: t.textSec, row: 0, col: 0, w: 4, h: 1 },
+      { id: "calendar", name: "Kalender", color: ACCENT.calendar, row: 1, col: 0, w: 4, h: 3 },
+      { id: "todo", name: "Att göra", color: ACCENT.todo, row: 4, col: 0, w: 2, h: 2 },
+      { id: "meal", name: "Matsedel", color: ACCENT.meal, row: 4, col: 2, w: 2, h: 2 },
+    ]
   const [widgets, setWidgets] = useState(initial)
   const [selected, setSelected] = useState(null)
   const [saving, setSaving] = useState(false)
