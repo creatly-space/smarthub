@@ -986,97 +986,30 @@ function normalizeTvWidget(w) {
   }
 }
 
-function TvEditorSection({ onBack, isMobile, tvWidgets, onSaveTvLayout }) {
-  const initial = (tvWidgets && tvWidgets.length > 0)
-    ? tvWidgets.map(normalizeTvWidget)
-    : [
-      { id: "clock", name: "Klocka", color: t.textSec, row: 0, col: 0, w: 4, h: 1 },
-      { id: "calendar", name: "Kalender", color: ACCENT.calendar, row: 1, col: 0, w: 4, h: 3 },
-      { id: "todo", name: "Att göra", color: ACCENT.todo, row: 4, col: 0, w: 2, h: 2 },
-      { id: "meal", name: "Matsedel", color: ACCENT.meal, row: 4, col: 2, w: 2, h: 2 },
-    ]
-  const [widgets, setWidgets] = useState(initial)
-  const [selected, setSelected] = useState(null)
-  const [saving, setSaving] = useState(false)
-  const gridCols = 4, gridRows = 6
-
-  async function save() {
-    setSaving(true)
-    await onSaveTvLayout(widgets)
-    setSaving(false)
-  }
-
-  function removeWidget(id) {
-    setWidgets(w => w.filter(x => x.id !== id))
-    if (selected === id) setSelected(null)
-  }
+function TvEditorSection({ onBack, isMobile, tvData }) {
+  // tvData = { persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, weather }
+  // Skalfaktor — 540x960 ner till hanterbar storlek i editorn
+  const scale = isMobile ? 0.45 : 0.55
 
   return (
     <div>
-      <SectionHeader title="TV-editor" onBack={onBack} />
-      <p style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, color: t.textSec, margin: "0 0 16px" }}>Anpassa widgets i TV-vyn. Spara för att uppdatera TV:n direkt via realtime.</p>
-      <div style={{ display: "flex", gap: 16, flexDirection: isMobile ? "column" : "row" }}>
-        <Card style={{ flex: 1 }}>
-          <div style={{ padding: 12 }}>
-            <div style={{
-              display: "grid",
-              gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
-              gridTemplateRows: `repeat(${gridRows}, 48px)`,
-              gap: 4, background: t.bg, borderRadius: 8, padding: 4,
-              aspectRatio: isMobile ? undefined : "9/16",
-            }}>
-              {widgets.map(w => (
-                <div key={w.id} onClick={() => setSelected(selected === w.id ? null : w.id)} style={{
-                  gridColumn: `${w.col + 1} / span ${w.w}`,
-                  gridRow: `${w.row + 1} / span ${w.h}`,
-                  background: selected === w.id ? `${w.color}25` : `${w.color}12`,
-                  border: selected === w.id ? `2px solid ${w.color}` : "2px solid transparent",
-                  borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
-                  cursor: "pointer", transition: "all 0.15s",
-                }}>
-                  <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, fontWeight: 700, color: w.color }}>{w.name}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </Card>
-        <div style={{ width: isMobile ? "100%" : 220, display: "flex", flexDirection: "column", gap: 8 }}>
-          <Card>
-            <div style={{ padding: 14 }}>
-              <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, fontWeight: 700, color: t.textSec, marginBottom: 8 }}>Widgets</div>
-              {widgets.map(w => (
-                <div key={w.id} onClick={() => setSelected(w.id)} style={{
-                  display: "flex", alignItems: "center", gap: 8, padding: "8px 8px",
-                  borderRadius: 8, background: selected === w.id ? `${w.color}08` : "transparent",
-                  cursor: "pointer", marginBottom: 2,
-                }}>
-                  <Grip size={12} color={t.textMuted} />
-                  <div style={{ width: 10, height: 10, borderRadius: 4, background: w.color }} />
-                  <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 600, color: t.text }}>{w.name}</span>
-                </div>
-              ))}
-            </div>
-          </Card>
-          {selected && (
-            <Card>
-              <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
-                <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, fontWeight: 700, color: t.textSec }}>
-                  Redigera: {widgets.find(w => w.id === selected)?.name}
-                </div>
-                <div style={{ display: "flex", gap: 6 }}>
-                  <Btn small outline color="#dc2626" onClick={() => removeWidget(selected)}><Trash2 size={12} /> Ta bort</Btn>
-                </div>
-                <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textMuted }}>
-                  Storlek: {widgets.find(w => w.id === selected)?.w}×{widgets.find(w => w.id === selected)?.h} rutor
-                </div>
-              </div>
-            </Card>
-          )}
-          <Btn color={ACCENT.calendar} onClick={save} disabled={saving}>
-            {saving ? "Sparar..." : "Spara TV-layout"}
-          </Btn>
-        </div>
+      <SectionHeader title="TV-vy preview" onBack={onBack} />
+      <p style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, color: t.textSec, margin: "0 0 16px" }}>
+        Så här ser TV-vyn ut just nu — exakt samma layout som visas på TV:n (1080×1920),
+        med din riktiga data. Öppna <code style={{ background: t.inputBg, padding: "1px 6px", borderRadius: 4 }}>?view=tv</code> i URL:en på en TV-skärm för fullskärmsläge.
+      </p>
+      <div style={{ display: "flex", justifyContent: "center", padding: "8px 0 24px" }}>
+        <TvPreview scale={scale} {...tvData} />
       </div>
+      <Card>
+        <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, fontWeight: 700, color: t.textSec }}>Info</div>
+          <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textMuted, lineHeight: 1.5 }}>
+            Layouten är just nu fast: klocka + väder högst upp, kalender i mitten,
+            att-göra och matsedel längst ner. Anpassningsbara widgets kommer i en framtida version.
+          </div>
+        </div>
+      </Card>
     </div>
   )
 }
@@ -1097,7 +1030,7 @@ function AccountSection({ onBack }) {
   )
 }
 
-function SettingsTab({ isMobile, session, household, members, foodPrefs, setFoodPrefs, onCreateInvite, tvWidgets, onSaveTvLayout, userId }) {
+function SettingsTab({ isMobile, session, household, members, foodPrefs, setFoodPrefs, onCreateInvite, tvData, userId }) {
   const [activeSection, setActiveSection] = useState(null)
   const sections = [
     { id: "profile", icon: User, label: "Profil", desc: "Namn, profilbild" },
@@ -1106,7 +1039,7 @@ function SettingsTab({ isMobile, session, household, members, foodPrefs, setFood
     { id: "food", icon: UtensilsCrossed, label: "Matpreferenser", desc: "Gillar, gillar inte, budget" },
     { id: "account", icon: LogOut, label: "Konto", desc: "Logga ut" },
   ]
-  if (activeSection === "tv") return <TvEditorSection onBack={() => setActiveSection(null)} isMobile={isMobile} tvWidgets={tvWidgets} onSaveTvLayout={onSaveTvLayout} />
+  if (activeSection === "tv") return <TvEditorSection onBack={() => setActiveSection(null)} isMobile={isMobile} tvData={tvData} />
   if (activeSection === "profile") return <ProfileSection onBack={() => setActiveSection(null)} session={session} />
   if (activeSection === "household") return <HouseholdSection onBack={() => setActiveSection(null)} household={household} members={members} userId={userId} onCreateInvite={onCreateInvite} />
   if (activeSection === "food") return <FoodPrefsSection onBack={() => setActiveSection(null)} foodPrefs={foodPrefs} setFoodPrefs={setFoodPrefs} />
@@ -1278,7 +1211,7 @@ function TabContent({
   mealsByWeekday, mealTagsLocal, onSetMealText, onSetMealTag,
   foodPrefs, setFoodPrefs, onAiGenerate,
   // settings
-  session, household, members, onCreateInvite, tvWidgets, onSaveTvLayout,
+  session, household, members, onCreateInvite, tvData,
 }) {
   const pad = isMobile ? "16px 16px 16px" : "24px 28px"
   if (tab === "hem") {
@@ -1323,7 +1256,7 @@ function TabContent({
       <SettingsTab isMobile={isMobile} session={session} household={household} members={members}
         foodPrefs={foodPrefs} setFoodPrefs={setFoodPrefs}
         onCreateInvite={onCreateInvite}
-        tvWidgets={tvWidgets} onSaveTvLayout={onSaveTvLayout}
+        tvData={tvData}
         userId={userId} />
     </div>
   )
@@ -1405,16 +1338,16 @@ function DesktopSidebar({ tab, setTab, session, weather, household }) {
   )
 }
 
-function TvLayout({ persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, weather }) {
+// Inre TV-vy: 540x960 logiskt format. Renderas både i riktig TV-läge (med zoom:2)
+// och i TV-editorns preview (skalad ner med transform: scale).
+function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, weather }) {
   return (
     <div style={{
-      width: 540, height: 960,
-      position: "fixed", top: 0, left: 0, overflow: "hidden",
-      zoom: 2, transformOrigin: "top left",
+      width: "100%", height: "100%",
       background: t.bg, fontFamily: "Nunito, sans-serif",
-      display: "flex", flexDirection: "column",
+      display: "flex", flexDirection: "column", overflow: "hidden",
+      boxSizing: "border-box",
     }}>
-      <style>{"html,body{margin:0!important;padding:0!important;overflow:hidden!important;background:#000!important} *::-webkit-scrollbar{display:none!important}"}</style>
       <div style={{ padding: "24px 20px 12px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <ClockDisplay size="huge" />
         <div style={{ textAlign: "right" }}>
@@ -1446,6 +1379,42 @@ function TvLayout({ persons, calEvents, pinnedList, onToggleItem, mealsByWeekday
             <MealCard fill mealsByWeekday={mealsByWeekday} mealTagsLocal={mealTagsLocal} onSetMealText={() => {}} onSetMealTag={() => {}} />
           </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// Riktig TV-vy (visas på 1080x1920-skärm via zoom:2 på 540x960 logiskt).
+function TvLayout(props) {
+  return (
+    <div style={{
+      width: 540, height: 960,
+      position: "fixed", top: 0, left: 0, overflow: "hidden",
+      zoom: 2, transformOrigin: "top left",
+    }}>
+      <style>{"html,body{margin:0!important;padding:0!important;overflow:hidden!important;background:#000!important} *::-webkit-scrollbar{display:none!important}"}</style>
+      <TvViewContent {...props} />
+    </div>
+  )
+}
+
+// Preview-komponent för TV-editor: skalad version av samma vy.
+function TvPreview({ scale = 0.5, ...props }) {
+  return (
+    <div style={{
+      width: 540 * scale, height: 960 * scale,
+      position: "relative", overflow: "hidden",
+      borderRadius: 14, border: `2px solid ${t.cardBorder}`,
+      boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+      background: "#000",
+    }}>
+      <div style={{
+        width: 540, height: 960,
+        transform: `scale(${scale})`,
+        transformOrigin: "top left",
+        pointerEvents: "none",
+      }}>
+        <TvViewContent {...props} />
       </div>
     </div>
   )
@@ -1837,7 +1806,11 @@ export default function SmartHub({ session, household }) {
     onAiGenerate: handleAiGenerateMeals,
     session, household, members,
     onCreateInvite: handleCreateInvite,
-    tvWidgets, onSaveTvLayout: handleSaveTvLayout,
+    tvData: {
+      persons, calEvents, pinnedList,
+      onToggleItem: handleToggleTodo,
+      mealsByWeekday, mealTagsLocal, weather,
+    },
   }
 
   // ─── Mobile view ───
