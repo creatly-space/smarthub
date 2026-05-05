@@ -6,6 +6,7 @@ import {
   CloudDrizzle, CloudFog, Snowflake, Monitor,
   Users, Lock, X, ChevronRight, ChevronLeft, User, LogOut, Sparkles,
   ThumbsUp, ThumbsDown, Grip, Copy, Trash2, Edit3, Mic, MapPin,
+  Archive, ArchiveRestore, Search,
 } from "lucide-react"
 
 // ════════════════════════════════════════════════
@@ -549,7 +550,7 @@ function TodoCard({ pinnedList, onToggle, fill }) {
   )
 }
 
-function ListsView({ lists, pinnedListId, onToggleItem, onTogglePin, onToggleShared, onAddTodo, onAddList, onDeleteList, onDeleteTodo }) {
+function ListsView({ lists, pinnedListId, onToggleItem, onTogglePin, onToggleShared, onAddTodo, onAddList, onDeleteList, onDeleteTodo, onArchiveList }) {
   const [expandedId, setExpandedId] = useState(lists[0]?.id)
   const [addingForList, setAddingForList] = useState(null)
   const [newText, setNewText] = useState("")
@@ -666,6 +667,9 @@ function ListsView({ lists, pinnedListId, onToggleItem, onTogglePin, onToggleSha
                   <Btn small outline color={list.shared ? ACCENT.calendar : t.textSec} onClick={e => { e.stopPropagation(); onToggleShared(list) }}>
                     {list.shared ? <><Users size={12} /> Delad</> : <><Lock size={12} /> Privat</>}
                   </Btn>
+                  <Btn small outline color={t.textSec} onClick={e => { e.stopPropagation(); onArchiveList(list.id) }}>
+                    <Archive size={12} /> Arkivera
+                  </Btn>
                   <Btn small outline color="#dc2626" onClick={e => { e.stopPropagation(); onDeleteList(list.id) }}>
                     <Trash2 size={12} /> Ta bort
                   </Btn>
@@ -690,6 +694,110 @@ function ListsView({ lists, pinnedListId, onToggleItem, onTogglePin, onToggleSha
       {lists.length === 0 && !showAddList && (
         <Card><div style={{ padding: 24, textAlign: "center", color: t.textMuted, fontSize: 13, fontFamily: "Nunito, sans-serif" }}>Inga listor än. Skapa en!</div></Card>
       )}
+    </div>
+  )
+}
+
+// ════════════════════════════════════════════════
+//  ARCHIVE VIEW (söker bland arkiverade listor)
+// ════════════════════════════════════════════════
+function ArchiveView({ archivedLists, onRestore, onDeletePermanent, onClose }) {
+  const [query, setQuery] = useState("")
+  const [confirmDelete, setConfirmDelete] = useState(null) // list id
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return archivedLists
+    return archivedLists.filter(l => l.name.toLowerCase().includes(q))
+  }, [archivedLists, query])
+
+  function fmtArchivedAt(iso) {
+    if (!iso) return ""
+    const d = new Date(iso)
+    const today = new Date()
+    const days = Math.floor((today - d) / 86400000)
+    if (days === 0) return "Idag"
+    if (days === 1) return "Igår"
+    if (days < 7) return `${days} dagar sedan`
+    return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`
+  }
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+        <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
+          <ChevronLeft size={20} color={t.textSec} />
+        </button>
+        <h2 style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 22, fontWeight: 700, color: t.text, margin: 0 }}>Arkiv</h2>
+        <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textMuted, marginLeft: "auto" }}>
+          {archivedLists.length} {archivedLists.length === 1 ? "lista" : "listor"}
+        </span>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: t.inputBg, border: `1px solid ${t.inputBorder}`, borderRadius: 12, marginBottom: 14 }}>
+        <Search size={16} color={t.textMuted} />
+        <input
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Sök listnamn..."
+          style={{ flex: 1, background: "transparent", border: "none", outline: "none", fontFamily: "Nunito, sans-serif", fontSize: 14, color: t.text }}
+        />
+        {query && (
+          <button onClick={() => setQuery("")} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", color: t.textMuted }}>
+            <X size={14} />
+          </button>
+        )}
+      </div>
+
+      {filtered.length === 0 && (
+        <Card>
+          <div style={{ padding: 24, textAlign: "center", color: t.textMuted, fontSize: 13, fontFamily: "Nunito, sans-serif" }}>
+            {archivedLists.length === 0 ? "Inga arkiverade listor än" : "Ingen lista matchar din sökning"}
+          </div>
+        </Card>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {filtered.map(list => {
+          const items = list.items || []
+          const doneCount = items.filter(i => i.done).length
+          const isConfirming = confirmDelete === list.id
+          return (
+            <Card key={list.id} accent={list.color}>
+              <div style={{ padding: "12px 16px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
+                    <Label color={list.color} icon={ListChecks}>{list.name}</Label>
+                    <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textSec, flexShrink: 0 }}>
+                      {doneCount}/{items.length}
+                    </span>
+                  </div>
+                  <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textMuted, flexShrink: 0 }}>
+                    Arkiverad {fmtArchivedAt(list.archived_at)}
+                  </span>
+                </div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <Btn small outline color={ACCENT.todo} onClick={() => onRestore(list.id)}>
+                    <ArchiveRestore size={12} /> Återställ
+                  </Btn>
+                  {!isConfirming ? (
+                    <Btn small outline color="#dc2626" onClick={() => setConfirmDelete(list.id)}>
+                      <Trash2 size={12} /> Radera permanent
+                    </Btn>
+                  ) : (
+                    <>
+                      <Btn small outline onClick={() => setConfirmDelete(null)}>Avbryt</Btn>
+                      <Btn small color="#dc2626" onClick={() => { onDeletePermanent(list.id); setConfirmDelete(null) }}>
+                        <Trash2 size={12} /> Bekräfta radering
+                      </Btn>
+                    </>
+                  )}
+                </div>
+              </div>
+            </Card>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -1399,8 +1507,9 @@ function AiChat({ position = "fixed", onSend }) {
 function TabContent({
   tab, isMobile, weather,
   // lists
-  listsWithItems, pinnedListId, onToggleItem, onTogglePin, onToggleShared,
-  onAddTodo, onAddList, onDeleteList, onDeleteTodo, pinnedList,
+  listsWithItems, archivedLists, pinnedListId, onToggleItem, onTogglePin, onToggleShared,
+  onAddTodo, onAddList, onDeleteList, onDeleteTodo, onArchiveList, onRestoreList,
+  showArchive, setShowArchive, pinnedList,
   // calendar
   calEvents, persons, onAddEvent, onDeleteEvent, onOpenAddEvent, userId,
   // meals
@@ -1431,10 +1540,25 @@ function TabContent({
   }
   if (tab === "kalender") return <div style={{ padding: pad }}><CalendarTab isMobile={isMobile} events={calEvents} persons={persons} onAddEvent={onAddEvent} onDeleteEvent={onDeleteEvent} userId={userId} /></div>
   if (tab === "listor") {
+    if (showArchive) {
+      return (
+        <div style={{ padding: pad }}>
+          <ArchiveView
+            archivedLists={archivedLists}
+            onRestore={onRestoreList}
+            onDeletePermanent={onDeleteList}
+            onClose={() => setShowArchive(false)}
+          />
+        </div>
+      )
+    }
     return (
       <div style={{ padding: pad }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <h2 style={{ fontFamily: "Comfortaa, sans-serif", fontSize: isMobile ? 22 : 24, fontWeight: 700, color: t.text, margin: 0 }}>Listor</h2>
+          <Btn outline small color={t.textSec} onClick={() => setShowArchive(true)}>
+            <Archive size={12} /> Arkiv {archivedLists.length > 0 && `(${archivedLists.length})`}
+          </Btn>
         </div>
         <ListsView
           lists={listsWithItems}
@@ -1446,6 +1570,7 @@ function TabContent({
           onAddList={onAddList}
           onDeleteList={onDeleteList}
           onDeleteTodo={onDeleteTodo}
+          onArchiveList={onArchiveList}
         />
       </div>
     )
@@ -1696,6 +1821,7 @@ export default function SmartHub({ session, household }) {
 
   // ── UI state ──
   const [tab, setTab] = useState("hem")
+  const [showArchive, setShowArchive] = useState(false)
 
   // ── Data state (synced from Supabase, same shape as v10) ──
   const [lists, setLists] = useState([])
@@ -1932,16 +2058,28 @@ export default function SmartHub({ session, household }) {
     role: m.role,
   })), [members, userId])
 
-  const listsWithItems = useMemo(() => lists.map(l => ({
+  const allListsWithItems = useMemo(() => lists.map(l => ({
     ...l,
     items: todos.filter(td => td.list_id === l.id).map(td => ({
       id: td.id, text: td.text, done: td.done, list_id: td.list_id, shared: td.shared,
     })),
   })), [lists, todos])
 
-  // pinned är nu en kolumn i lists-tabellen. Hitta den listan, fall tillbaka till första.
+  // Aktiva listor (visas i huvudvyn) — arkiverade göms
+  const listsWithItems = useMemo(
+    () => allListsWithItems.filter(l => !l.archived),
+    [allListsWithItems]
+  )
+  const archivedLists = useMemo(
+    () => allListsWithItems.filter(l => l.archived).sort((a, b) =>
+      new Date(b.archived_at || 0) - new Date(a.archived_at || 0)
+    ),
+    [allListsWithItems]
+  )
+
+  // pinned är nu en kolumn i lists-tabellen. Hitta den listan, fall tillbaka till första aktiva.
   const pinnedListId = useMemo(
-    () => lists.find(l => l.pinned)?.id || listsWithItems[0]?.id || null,
+    () => lists.find(l => l.pinned && !l.archived)?.id || listsWithItems[0]?.id || null,
     [lists, listsWithItems]
   )
   const pinnedList = listsWithItems.find(l => l.id === pinnedListId) || listsWithItems[0]
@@ -1986,6 +2124,16 @@ export default function SmartHub({ session, household }) {
   async function handleDeleteList(id) {
     setLists(p => p.filter(l => l.id !== id))
     await supabase.from("lists").delete().eq("id", id)
+  }
+  // Arkivera = soft-delete: listan göms från huvudvyn men finns kvar i Arkiv.
+  async function handleArchiveList(id) {
+    const now = new Date().toISOString()
+    setLists(p => p.map(l => l.id === id ? { ...l, archived: true, archived_at: now } : l))
+    await supabase.from("lists").update({ archived: true, archived_at: now }).eq("id", id)
+  }
+  async function handleRestoreList(id) {
+    setLists(p => p.map(l => l.id === id ? { ...l, archived: false, archived_at: null } : l))
+    await supabase.from("lists").update({ archived: false, archived_at: null }).eq("id", id)
   }
   async function handleToggleSharedList(list) {
     setLists(p => p.map(l => l.id === list.id ? { ...l, shared: !l.shared } : l))
@@ -2144,7 +2292,7 @@ export default function SmartHub({ session, household }) {
 
   const tabContentProps = {
     tab, isMobile: view === "mobile", weather,
-    listsWithItems, pinnedListId,
+    listsWithItems, archivedLists, pinnedListId,
     onToggleItem: handleToggleTodo,
     onTogglePin: handleTogglePin,
     onToggleShared: handleToggleSharedList,
@@ -2152,6 +2300,9 @@ export default function SmartHub({ session, household }) {
     onAddList: handleAddList,
     onDeleteList: handleDeleteList,
     onDeleteTodo: handleDeleteTodo,
+    onArchiveList: handleArchiveList,
+    onRestoreList: handleRestoreList,
+    showArchive, setShowArchive,
     pinnedList,
     calEvents, persons, onAddEvent: handleAddEvent, onDeleteEvent: handleDeleteEvent, onOpenAddEvent: openAddEvent, userId,
     mealsByWeekday, mealTagsLocal,
