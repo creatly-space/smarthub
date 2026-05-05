@@ -191,7 +191,7 @@ function getPersonForEvent(ev, persons) {
   const idx = persons.findIndex(p => p.user_id === ev.created_by)
   return idx >= 0 ? persons[idx] : persons[0]
 }
-function CalendarWidget({ events, persons, fill, compact, onAddEvent }) {
+function CalendarWidget({ events, persons, fill, compact, onDayClick }) {
   const today = new Date()
   const [vm, setVm] = useState(today.getMonth())
   const [vy, setVy] = useState(today.getFullYear())
@@ -243,14 +243,22 @@ function CalendarWidget({ events, persons, fill, compact, onAddEvent }) {
               {wk.map((day, di) => {
                 const isToday = day === today.getDate() && isCurrentMonth
                 const dayEvents = day ? (eventsForView[day] || []) : []
+                const clickable = !!(day && onDayClick)
                 return (
-                  <div key={di} style={{
-                    display: "flex", flexDirection: "column", alignItems: "stretch",
-                    borderRadius: 6, padding: "2px 2px 1px",
-                    background: isToday ? `${ACCENT.calendar}08` : "transparent",
-                    border: isToday ? `1.5px solid ${ACCENT.calendar}30` : "1.5px solid transparent",
-                    minHeight: 0, overflow: "hidden", cursor: day ? "pointer" : "default",
-                  }}>
+                  <div key={di}
+                    onClick={clickable ? () => onDayClick(new Date(vy, vm, day)) : undefined}
+                    style={{
+                      display: "flex", flexDirection: "column", alignItems: "stretch",
+                      borderRadius: 6, padding: "2px 2px 1px",
+                      background: isToday ? `${ACCENT.calendar}08` : "transparent",
+                      border: isToday ? `1.5px solid ${ACCENT.calendar}30` : "1.5px solid transparent",
+                      minHeight: 0, overflow: "hidden",
+                      cursor: clickable ? "pointer" : "default",
+                      transition: "background 0.15s",
+                    }}
+                    onMouseEnter={clickable ? e => { if (!isToday) e.currentTarget.style.background = `${ACCENT.calendar}06` } : undefined}
+                    onMouseLeave={clickable ? e => { if (!isToday) e.currentTarget.style.background = "transparent" } : undefined}
+                  >
                     <div style={{
                       fontFamily: "Comfortaa, sans-serif", fontSize: compact ? 10 : 11, fontWeight: isToday ? 800 : 500,
                       color: !day ? "transparent" : isToday ? ACCENT.calendar : t.text,
@@ -285,6 +293,101 @@ function CalendarWidget({ events, persons, fill, compact, onAddEvent }) {
         )}
       </div>
     </Card>
+  )
+}
+
+// Globalt event-modal som kan öppnas från Hem-vyn (eller var som helst).
+// Bottom-sheet style — täcker över hela viewporten.
+function AddEventModal({ open, prefillDate, persons, onClose, onSave }) {
+  const [title, setTitle] = useState("")
+  const [date, setDate] = useState(fmtDate(new Date()))
+  const [time, setTime] = useState("12:00")
+  const [endTime, setEndTime] = useState("13:00")
+  const [personIdx, setPersonIdx] = useState(0)
+  const [shared, setShared] = useState(true)
+  const [notify, setNotify] = useState(true)
+
+  // Prefilla datum när modalen öppnas
+  useEffect(() => {
+    if (open) {
+      setDate(prefillDate ? fmtDate(prefillDate) : fmtDate(new Date()))
+      setTitle("")
+      setTime("12:00")
+      setEndTime("13:00")
+    }
+  }, [open, prefillDate])
+
+  if (!open) return null
+
+  function submit() {
+    if (!title.trim()) return
+    onSave({
+      title: title.trim(),
+      start_time: date + "T" + time + ":00",
+      end_time: date + "T" + endTime + ":00",
+      location: null,
+      color: persons[personIdx]?.color || ACCENT.event,
+      shared,
+    })
+    onClose()
+  }
+
+  return (
+    <div onClick={onClose} style={{
+      position: "fixed", inset: 0, zIndex: 300,
+      background: "rgba(0,0,0,0.4)",
+      display: "flex", alignItems: "flex-end", justifyContent: "center",
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: t.card, borderRadius: "20px 20px 0 0",
+        width: "100%", maxWidth: 560,
+        padding: 20, paddingBottom: 32,
+        display: "flex", flexDirection: "column", gap: 12,
+        boxShadow: "0 -4px 24px rgba(0,0,0,0.15)",
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 18, fontWeight: 700, color: t.text }}>Ny händelse</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}>
+            <X size={20} color={t.textSec} />
+          </button>
+        </div>
+        <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Vad ska hända?" style={{ ...inputStyle, fontSize: 14 }} autoFocus />
+        <div style={{ display: "flex", gap: 8 }}>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ ...inputStyle, flex: 1, fontSize: 13 }} />
+          <input type="time" value={time} onChange={e => setTime(e.target.value)} style={{ ...inputStyle, width: 100, fontSize: 13 }} />
+          <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} style={{ ...inputStyle, width: 100, fontSize: 13 }} />
+        </div>
+        {persons.length > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textSec, fontWeight: 600 }}>Vem:</span>
+            {persons.map((p, i) => (
+              <button key={i} onClick={() => setPersonIdx(i)} style={{
+                display: "flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 8,
+                border: i === personIdx ? `2px solid ${p.color}` : "2px solid transparent",
+                background: `${p.color}10`, cursor: "pointer",
+                fontFamily: "Nunito, sans-serif", fontSize: 12, fontWeight: 700, color: p.color,
+              }}>{p.name}</button>
+            ))}
+          </div>
+        )}
+        <div onClick={() => setShared(s => !s)} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "4px 0" }}>
+          <div style={{ width: 36, height: 20, borderRadius: 10, background: shared ? ACCENT.calendar : t.textMuted, padding: 2, display: "flex", alignItems: "center" }}>
+            <div style={{ width: 16, height: 16, borderRadius: 8, background: "#fff", transition: "transform 0.2s", transform: shared ? "translateX(16px)" : "translateX(0)" }} />
+          </div>
+          <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 600, color: shared ? t.text : t.textSec }}>{shared ? "Delad med hushållet" : "Bara för mig"}</span>
+        </div>
+        <div onClick={() => setNotify(n => !n)} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "4px 0" }}>
+          <div style={{ width: 36, height: 20, borderRadius: 10, background: notify ? ACCENT.calendar : t.textMuted, padding: 2, display: "flex", alignItems: "center" }}>
+            <div style={{ width: 16, height: 16, borderRadius: 8, background: "#fff", transition: "transform 0.2s", transform: notify ? "translateX(16px)" : "translateX(0)" }} />
+          </div>
+          <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 600, color: notify ? t.text : t.textSec }}>Påminnelse</span>
+        </div>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
+          <Btn outline small onClick={onClose}><X size={12} /> Avbryt</Btn>
+          <Btn small color={ACCENT.calendar} onClick={submit} disabled={!title.trim()}><Check size={12} /> Spara</Btn>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -374,7 +477,11 @@ function CalendarTab({ isMobile, events, persons, onAddEvent, onDeleteEvent, use
         </Card>
       )}
 
-      <CalendarWidget events={events} persons={persons} />
+      <CalendarWidget
+        events={events}
+        persons={persons}
+        onDayClick={d => { setDate(fmtDate(d)); setShowAdd(true) }}
+      />
 
       {eventsToday.length > 0 && (
         <Card style={{ marginTop: 12 }}>
@@ -987,30 +1094,118 @@ function normalizeTvWidget(w) {
   }
 }
 
-function TvEditorSection({ onBack, isMobile, tvData }) {
-  // tvData = { persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, weather }
-  // Skalfaktor — 540x960 ner till hanterbar storlek i editorn
+function TvEditorSection({ onBack, isMobile, tvData, tvSlots, onSaveTvSlots }) {
+  const [slots, setSlots] = useState(() => ({ ...DEFAULT_TV_SLOTS, ...(tvSlots || {}) }))
+  const [pickerOpen, setPickerOpen] = useState(null) // slotId being edited
+  const [saving, setSaving] = useState(false)
+  const [savedAt, setSavedAt] = useState(null)
   const scale = isMobile ? 0.45 : 0.55
+
+  // Synka in när tvSlots från DB ändras (t.ex. realtime från annan enhet)
+  useEffect(() => {
+    if (tvSlots) setSlots(s => ({ ...DEFAULT_TV_SLOTS, ...tvSlots }))
+  }, [tvSlots])
+
+  async function saveSlots(newSlots) {
+    setSaving(true)
+    await onSaveTvSlots(newSlots)
+    setSaving(false)
+    setSavedAt(Date.now())
+    setTimeout(() => setSavedAt(null), 2000)
+  }
+
+  function pickWidget(slotId, widgetType) {
+    const newSlots = { ...slots, [slotId]: widgetType }
+    setSlots(newSlots)
+    setPickerOpen(null)
+    saveSlots(newSlots)
+  }
+
+  // Render-prop: lägger en klickbar overlay över varje slot i preview:n
+  const slotOverlay = (slotId, currentType) => (
+    <div
+      onClick={() => setPickerOpen(slotId)}
+      style={{
+        position: "absolute", inset: 0, zIndex: 10,
+        cursor: "pointer", borderRadius: 14,
+        background: pickerOpen === slotId ? "rgba(124,58,237,0.18)" : "transparent",
+        border: pickerOpen === slotId ? `3px solid ${ACCENT.calendar}` : "3px solid transparent",
+        transition: "all 0.15s",
+        pointerEvents: "auto",
+      }}
+      onMouseEnter={e => { if (pickerOpen !== slotId) e.currentTarget.style.background = "rgba(124,58,237,0.08)" }}
+      onMouseLeave={e => { if (pickerOpen !== slotId) e.currentTarget.style.background = "transparent" }}
+    />
+  )
 
   return (
     <div>
-      <SectionHeader title="TV-vy preview" onBack={onBack} />
-      <p style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, color: t.textSec, margin: "0 0 16px" }}>
-        Så här ser TV-vyn ut just nu — exakt samma layout som visas på TV:n (1080×1920),
-        med din riktiga data. Raspberry Pi-kiosken laddar <code style={{ background: t.inputBg, padding: "1px 6px", borderRadius: 4 }}>?mode=tv</code> i URL:en för fullskärmsläge.
+      <SectionHeader title="TV-vy editor" onBack={onBack} />
+      <p style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, color: t.textSec, margin: "0 0 8px" }}>
+        Klicka på en widget i preview:n för att byta vad den visar. Ändringar sparas direkt och syns på TV:n via realtime.
       </p>
-      <div style={{ display: "flex", justifyContent: "center", padding: "8px 0 24px" }}>
-        <TvPreview scale={scale} {...tvData} />
+      <p style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textMuted, margin: "0 0 16px" }}>
+        Pi-kiosken laddar <code style={{ background: t.inputBg, padding: "1px 6px", borderRadius: 4 }}>?mode=tv</code> i URL:en.
+      </p>
+
+      <div style={{ display: "flex", justifyContent: "center", padding: "8px 0 16px" }}>
+        <TvPreview
+          scale={scale}
+          {...tvData}
+          slots={slots}
+          slotOverlay={slotOverlay}
+        />
       </div>
-      <Card>
-        <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 6 }}>
-          <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, fontWeight: 700, color: t.textSec }}>Info</div>
-          <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textMuted, lineHeight: 1.5 }}>
-            Layouten är just nu fast: klocka + väder högst upp, kalender i mitten,
-            att-göra och matsedel längst ner. Anpassningsbara widgets kommer i en framtida version.
+
+      <div style={{ textAlign: "center", marginBottom: 16, fontFamily: "Nunito, sans-serif", fontSize: 12, color: savedAt ? ACCENT.todo : t.textMuted, transition: "color 0.2s" }}>
+        {saving ? "Sparar..." : savedAt ? "✓ Sparat — TV:n uppdateras automatiskt" : "Tryck på en widget i preview:n för att byta"}
+      </div>
+
+      {pickerOpen && (
+        <div onClick={() => setPickerOpen(null)} style={{
+          position: "fixed", inset: 0, zIndex: 300,
+          background: "rgba(0,0,0,0.4)",
+          display: "flex", alignItems: "flex-end", justifyContent: "center",
+        }}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: t.card, borderRadius: "20px 20px 0 0",
+            width: "100%", maxWidth: 560,
+            padding: 20, paddingBottom: 32,
+            display: "flex", flexDirection: "column", gap: 12,
+            boxShadow: "0 -4px 24px rgba(0,0,0,0.15)",
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 18, fontWeight: 700, color: t.text }}>
+                Välj widget för {pickerOpen === "main" ? "huvud-rutan" : pickerOpen === "bottomLeft" ? "nedre vänster" : "nedre höger"}
+              </span>
+              <button onClick={() => setPickerOpen(null)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}>
+                <X size={20} color={t.textSec} />
+              </button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              {TV_SLOT_OPTIONS.map(opt => {
+                const Icon = opt.icon
+                const active = slots[pickerOpen] === opt.id
+                return (
+                  <button key={opt.id} onClick={() => pickWidget(pickerOpen, opt.id)} style={{
+                    display: "flex", alignItems: "center", gap: 10,
+                    padding: "14px 16px", borderRadius: 12,
+                    background: active ? `${opt.color}10` : t.inputBg,
+                    border: active ? `2px solid ${opt.color}` : "2px solid transparent",
+                    cursor: "pointer",
+                    fontFamily: "Nunito, sans-serif",
+                    textAlign: "left",
+                  }}>
+                    <Icon size={20} color={opt.color} />
+                    <span style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{opt.label}</span>
+                    {active && <Check size={16} color={opt.color} style={{ marginLeft: "auto" }} />}
+                  </button>
+                )
+              })}
+            </div>
           </div>
         </div>
-      </Card>
+      )}
     </div>
   )
 }
@@ -1031,7 +1226,7 @@ function AccountSection({ onBack }) {
   )
 }
 
-function SettingsTab({ isMobile, session, household, members, foodPrefs, setFoodPrefs, onCreateInvite, tvData, userId }) {
+function SettingsTab({ isMobile, session, household, members, foodPrefs, setFoodPrefs, onCreateInvite, tvData, tvSlots, onSaveTvSlots, userId }) {
   const [activeSection, setActiveSection] = useState(null)
   const sections = [
     { id: "profile", icon: User, label: "Profil", desc: "Namn, profilbild" },
@@ -1040,7 +1235,7 @@ function SettingsTab({ isMobile, session, household, members, foodPrefs, setFood
     { id: "food", icon: UtensilsCrossed, label: "Matpreferenser", desc: "Gillar, gillar inte, budget" },
     { id: "account", icon: LogOut, label: "Konto", desc: "Logga ut" },
   ]
-  if (activeSection === "tv") return <TvEditorSection onBack={() => setActiveSection(null)} isMobile={isMobile} tvData={tvData} />
+  if (activeSection === "tv") return <TvEditorSection onBack={() => setActiveSection(null)} isMobile={isMobile} tvData={tvData} tvSlots={tvSlots} onSaveTvSlots={onSaveTvSlots} />
   if (activeSection === "profile") return <ProfileSection onBack={() => setActiveSection(null)} session={session} />
   if (activeSection === "household") return <HouseholdSection onBack={() => setActiveSection(null)} household={household} members={members} userId={userId} onCreateInvite={onCreateInvite} />
   if (activeSection === "food") return <FoodPrefsSection onBack={() => setActiveSection(null)} foodPrefs={foodPrefs} setFoodPrefs={setFoodPrefs} />
@@ -1207,12 +1402,12 @@ function TabContent({
   listsWithItems, pinnedListId, onToggleItem, onTogglePin, onToggleShared,
   onAddTodo, onAddList, onDeleteList, onDeleteTodo, pinnedList,
   // calendar
-  calEvents, persons, onAddEvent, onDeleteEvent, userId,
+  calEvents, persons, onAddEvent, onDeleteEvent, onOpenAddEvent, userId,
   // meals
   mealsByWeekday, mealTagsLocal, onSetMealText, onSetMealTag,
   foodPrefs, setFoodPrefs, onAiGenerate,
   // settings
-  session, household, members, onCreateInvite, tvData,
+  session, household, members, onCreateInvite, tvData, tvSlots, onSaveTvSlots,
 }) {
   const pad = isMobile ? "16px 16px 16px" : "24px 28px"
   if (tab === "hem") {
@@ -1221,7 +1416,11 @@ function TabContent({
         {isMobile && <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}><ClockDisplay size="small" /><WeatherMini weather={weather} /></div>}
         {!isMobile && <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}><h2 style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 24, fontWeight: 700, color: t.text, margin: 0 }}>Hem</h2><WeatherMini weather={weather} /></div>}
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <CalendarWidget events={calEvents} persons={persons} />
+          <CalendarWidget
+            events={calEvents}
+            persons={persons}
+            onDayClick={d => onOpenAddEvent(d)}
+          />
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
             <TodoCard pinnedList={pinnedList} onToggle={onToggleItem} />
             <MealCard mealsByWeekday={mealsByWeekday} mealTagsLocal={mealTagsLocal} onSetMealText={onSetMealText} onSetMealTag={onSetMealTag} />
@@ -1257,7 +1456,7 @@ function TabContent({
       <SettingsTab isMobile={isMobile} session={session} household={household} members={members}
         foodPrefs={foodPrefs} setFoodPrefs={setFoodPrefs}
         onCreateInvite={onCreateInvite}
-        tvData={tvData}
+        tvData={tvData} tvSlots={tvSlots} onSaveTvSlots={onSaveTvSlots}
         userId={userId} />
     </div>
   )
@@ -1339,9 +1538,70 @@ function DesktopSidebar({ tab, setTab, session, weather, household }) {
   )
 }
 
+// TV-widgets som kan placeras i slots
+const TV_SLOT_OPTIONS = [
+  { id: "calendar", label: "Kalender", color: ACCENT.calendar, icon: CalendarDays },
+  { id: "todo",     label: "Att göra", color: ACCENT.todo,     icon: ListChecks },
+  { id: "meal",     label: "Matsedel", color: ACCENT.meal,     icon: UtensilsCrossed },
+  { id: "events",   label: "Dagens händelser", color: ACCENT.event, icon: CalendarDays },
+  { id: "empty",    label: "Tom",      color: t.textMuted,     icon: X },
+]
+const DEFAULT_TV_SLOTS = { main: "calendar", bottomLeft: "todo", bottomRight: "meal" }
+
+// Standardiserad widget-renderer för TV-slots
+function renderTvSlotWidget(type, p) {
+  if (type === "calendar") return <CalendarWidget events={p.calEvents} persons={p.persons} fill />
+  if (type === "todo")     return <TodoCard pinnedList={p.pinnedList} onToggle={p.onToggleItem} fill />
+  if (type === "meal")     return <MealCard fill mealsByWeekday={p.mealsByWeekday} mealTagsLocal={p.mealTagsLocal} onSetMealText={() => {}} onSetMealTag={() => {}} />
+  if (type === "events")   return <TvEventsCard events={p.calEvents} persons={p.persons} />
+  if (type === "empty")    return <div style={{ flex: 1, background: t.inputBg, borderRadius: 14, border: `1px dashed ${t.cardBorder}` }} />
+  return null
+}
+
+// Lista över dagens & kommande händelser — TV-vänlig
+function TvEventsCard({ events, persons }) {
+  const upcoming = useMemo(() => {
+    const now = new Date()
+    return events
+      .filter(e => new Date(e.start_time) >= new Date(now.getFullYear(), now.getMonth(), now.getDate()))
+      .sort((a, b) => new Date(a.start_time) - new Date(b.start_time))
+      .slice(0, 6)
+  }, [events])
+  return (
+    <Card accent={ACCENT.event} style={{ flex: 1, minHeight: 0 }}>
+      <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+        <Label color={ACCENT.event} icon={CalendarDays}>Kommande</Label>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10, flex: 1, overflow: "hidden" }}>
+          {upcoming.length === 0 && <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textMuted, fontStyle: "italic" }}>Inget inplanerat</span>}
+          {upcoming.map(ev => {
+            const p = getPersonForEvent(ev, persons)
+            const d = new Date(ev.start_time)
+            return (
+              <div key={ev.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", background: `${p.color}08`, borderRadius: 8, border: `1px solid ${p.color}15` }}>
+                <div style={{ width: 3, height: 22, borderRadius: 2, background: p.color, flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 9, color: t.textMuted }}>
+                    {d.getDate()} {MONTHS_SHORT[d.getMonth()]} · {fmtTime(ev.start_time)}
+                  </div>
+                  <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.title}</div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </Card>
+  )
+}
+
 // Inre TV-vy: 540x960 logiskt format. Renderas både i riktig TV-läge (med zoom:2)
 // och i TV-editorns preview (skalad ner med transform: scale).
-function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, weather }) {
+// `slots` styr vilka widgets som syns i de 3 slottarna (main, bottomLeft, bottomRight).
+// `slotOverlay(slotId)` är en valfri render prop som lägger en klickbar overlay över varje slot
+// (används av editor:n för att kunna byta widget).
+function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, weather, slots, slotOverlay }) {
+  const s = { ...DEFAULT_TV_SLOTS, ...(slots || {}) }
+  const widgetProps = { persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal }
   return (
     <div style={{
       width: "100%", height: "100%",
@@ -1371,13 +1631,18 @@ function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWe
         </div>
       )}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "0 16px 16px", gap: 10, minHeight: 0 }}>
-        <div style={{ flex: 6, display: "flex", minHeight: 0 }}><CalendarWidget events={calEvents} persons={persons} fill /></div>
+        <div style={{ flex: 6, display: "flex", minHeight: 0, position: "relative" }}>
+          {renderTvSlotWidget(s.main, widgetProps)}
+          {slotOverlay && slotOverlay("main", s.main)}
+        </div>
         <div style={{ flex: 4, display: "flex", gap: 10, minHeight: 0 }}>
-          <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
-            <TodoCard pinnedList={pinnedList} onToggle={onToggleItem} fill />
+          <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
+            {renderTvSlotWidget(s.bottomLeft, widgetProps)}
+            {slotOverlay && slotOverlay("bottomLeft", s.bottomLeft)}
           </div>
-          <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
-            <MealCard fill mealsByWeekday={mealsByWeekday} mealTagsLocal={mealTagsLocal} onSetMealText={() => {}} onSetMealTag={() => {}} />
+          <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
+            {renderTvSlotWidget(s.bottomRight, widgetProps)}
+            {slotOverlay && slotOverlay("bottomRight", s.bottomRight)}
           </div>
         </div>
       </div>
@@ -1438,10 +1703,16 @@ export default function SmartHub({ session, household }) {
   const [calEvents, setCalEvents] = useState([])
   const [meals, setMeals] = useState([])
   const [tvWidgets, setTvWidgets] = useState(null)
+  const [tvSlots, setTvSlots] = useState(null) // {main, bottomLeft, bottomRight}
   const [members, setMembers] = useState([])
   const [weather, setWeather] = useState(null)
 
   // ── v11 stub state (no Supabase persistence yet — see MIGRATIONS.sql) ──
+  // ── Lifted add-event modal (öppnas från Hem-vyns kalender) ──
+  const [addEventModal, setAddEventModal] = useState({ open: false, date: null })
+  function openAddEvent(date) { setAddEventModal({ open: true, date }) }
+  function closeAddEvent() { setAddEventModal({ open: false, date: null }) }
+
   // TODO(migration): När lists.pinned finns, byt mot per-list persisterad pinned.
   const [pinnedListId, setPinnedListId] = useState(null)
   // TODO(migration): När meals.tag finns, lyft tag till meals-tabellen.
@@ -1492,14 +1763,35 @@ export default function SmartHub({ session, household }) {
     if (!householdId) return
     let cancelled = false
     async function f() {
-      const { data } = await supabase.from("tv_layouts").select("widgets").eq("household_id", householdId).maybeSingle()
+      // tv_layouts har `widgets` (legacy v10) och `slots` (v11). Försök läsa båda; om
+      // slots-kolumnen inte finns ännu, fall tillbaka till bara widgets + localStorage.
+      let data = null
+      const r1 = await supabase.from("tv_layouts").select("widgets,slots").eq("household_id", householdId).maybeSingle()
+      if (!r1.error) {
+        data = r1.data
+      } else {
+        const r2 = await supabase.from("tv_layouts").select("widgets").eq("household_id", householdId).maybeSingle()
+        if (!r2.error) data = r2.data
+      }
       if (cancelled) return
       if (data?.widgets) setTvWidgets(data.widgets)
+      if (data?.slots) {
+        setTvSlots(data.slots)
+      } else if (typeof window !== "undefined") {
+        // Fallback om slots inte finns i DB ännu
+        try {
+          const stored = localStorage.getItem("smarthub:tvSlots:" + householdId)
+          if (stored) setTvSlots(JSON.parse(stored))
+        } catch {}
+      }
     }
     f()
     const ch = supabase.channel("tv:" + householdId).on("postgres_changes", {
       event: "*", schema: "public", table: "tv_layouts", filter: "household_id=eq." + householdId,
-    }, p => { if (p.new?.widgets) setTvWidgets(p.new.widgets) }).subscribe()
+    }, p => {
+      if (p.new?.widgets) setTvWidgets(p.new.widgets)
+      if (p.new?.slots) setTvSlots(p.new.slots)
+    }).subscribe()
     return () => { cancelled = true; supabase.removeChannel(ch) }
   }, [householdId])
 
@@ -1719,6 +2011,20 @@ export default function SmartHub({ session, household }) {
       household_id: householdId, widgets, updated_at: new Date().toISOString(),
     }, { onConflict: "household_id" })
   }
+  async function handleSaveTvSlots(slots) {
+    setTvSlots(slots)
+    if (!householdId) return
+    // Persistera mot DB om kolumnen finns. Annars logga + spara i localStorage som fallback.
+    const { error } = await supabase.from("tv_layouts").upsert({
+      household_id: householdId, slots, updated_at: new Date().toISOString(),
+    }, { onConflict: "household_id" })
+    if (error) {
+      console.warn("[tvSlots] DB-spar misslyckades — kör MIGRATIONS.sql för persistens:", error.message)
+      if (typeof window !== "undefined") {
+        try { localStorage.setItem("smarthub:tvSlots:" + householdId, JSON.stringify(slots)) } catch {}
+      }
+    }
+  }
   async function handleCreateInvite() {
     const code = genCode()
     const { error } = await supabase.from("invites").insert({ household_id: householdId, code, created_by: userId })
@@ -1783,6 +2089,7 @@ export default function SmartHub({ session, household }) {
           mealsByWeekday={mealsByWeekday}
           mealTagsLocal={mealTagsLocal}
           weather={weather}
+          slots={tvSlots}
         />
       </>
     )
@@ -1799,7 +2106,7 @@ export default function SmartHub({ session, household }) {
     onDeleteList: handleDeleteList,
     onDeleteTodo: handleDeleteTodo,
     pinnedList,
-    calEvents, persons, onAddEvent: handleAddEvent, onDeleteEvent: handleDeleteEvent, userId,
+    calEvents, persons, onAddEvent: handleAddEvent, onDeleteEvent: handleDeleteEvent, onOpenAddEvent: openAddEvent, userId,
     mealsByWeekday, mealTagsLocal,
     onSetMealText: handleSetMealText,
     onSetMealTag: handleSetMealTag,
@@ -1812,7 +2119,18 @@ export default function SmartHub({ session, household }) {
       onToggleItem: handleToggleTodo,
       mealsByWeekday, mealTagsLocal, weather,
     },
+    tvSlots, onSaveTvSlots: handleSaveTvSlots,
   }
+
+  const lifedAddEventModal = (
+    <AddEventModal
+      open={addEventModal.open}
+      prefillDate={addEventModal.date}
+      persons={persons}
+      onClose={closeAddEvent}
+      onSave={handleAddEvent}
+    />
+  )
 
   // ─── Mobile view ───
   if (view === "mobile") {
@@ -1826,6 +2144,7 @@ export default function SmartHub({ session, household }) {
           <MobileNav tab={tab} setTab={setTab} />
           <AiChat position="mobile" onSend={handleAiChat} />
         </div>
+        {lifedAddEventModal}
       </>
     )
   }
@@ -1841,6 +2160,7 @@ export default function SmartHub({ session, household }) {
           <AiChat position="desktop" onSend={handleAiChat} />
         </div>
       </div>
+      {lifedAddEventModal}
     </>
   )
 }
