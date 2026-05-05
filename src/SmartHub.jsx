@@ -6,7 +6,7 @@ import {
   CloudDrizzle, CloudFog, Snowflake, Monitor,
   Users, Lock, X, ChevronRight, ChevronLeft, User, LogOut, Sparkles,
   ThumbsUp, ThumbsDown, Grip, Copy, Trash2, Edit3, Mic, MapPin,
-  Archive, ArchiveRestore, Search,
+  Archive, ArchiveRestore, Search, Repeat,
 } from "lucide-react"
 
 // ════════════════════════════════════════════════
@@ -83,6 +83,75 @@ function fmtTime(iso) { if (!iso) return ""; const d = new Date(iso); return Str
 function fmtDate(date) { return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0") }
 function genCode() { const c = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; let r = ""; for (let i = 0; i < 6; i++) r += c[Math.floor(Math.random() * c.length)]; return r }
 function daysLeft(d) { if (!d) return null; return Math.ceil((new Date(d) - new Date()) / 86400000) }
+
+// ── Återkommande events ──
+const RECURRENCE_OPTIONS = [
+  { id: null,         label: "Aldrig (engångshändelse)" },
+  { id: "daily",      label: "Varje dag" },
+  { id: "weekdays",   label: "Varje vardag (mån-fre)" },
+  { id: "weekly",     label: "Varje vecka" },
+  { id: "monthly",    label: "Varje månad" },
+  { id: "yearly",     label: "Varje år" },
+]
+function recurrenceLabel(rule) {
+  if (!rule) return null
+  return RECURRENCE_OPTIONS.find(o => o.id === rule.freq)?.label || null
+}
+// Expanderar ett event med recurrence_rule till en lista av virtuella förekomster
+// inom [from, to]. Master-eventet får `master_id = event.id` på varje instans.
+// Begränsar till max 200 förekomster per event för att undvika oändliga loopar.
+function expandRecurring(event, from, to) {
+  if (!event.recurrence_rule || !event.recurrence_rule.freq) return [event]
+  const rule = event.recurrence_rule
+  const out = []
+  const startMs = new Date(event.start_time).getTime()
+  const endMs = new Date(event.end_time).getTime()
+  const duration = endMs - startMs
+  const untilMs = rule.until ? new Date(rule.until + "T23:59:59").getTime() : Infinity
+  const fromMs = from.getTime()
+  const toMs = to.getTime()
+  let current = new Date(startMs)
+  let safety = 0
+  while (current.getTime() <= toMs && current.getTime() <= untilMs && safety < 1000) {
+    safety++
+    if (current.getTime() >= fromMs) {
+      out.push({
+        ...event,
+        id: event.id + "_occ_" + current.getTime(),
+        master_id: event.id,
+        start_time: current.toISOString(),
+        end_time: new Date(current.getTime() + duration).toISOString(),
+      })
+    }
+    // Stega framåt enligt frekvens
+    if (rule.freq === "daily") {
+      current = new Date(current.getTime() + 86400000)
+    } else if (rule.freq === "weekdays") {
+      current = new Date(current.getTime() + 86400000)
+      while (current.getDay() === 0 || current.getDay() === 6) {
+        current = new Date(current.getTime() + 86400000)
+      }
+    } else if (rule.freq === "weekly") {
+      current = new Date(current.getTime() + 7 * 86400000)
+    } else if (rule.freq === "monthly") {
+      current = new Date(current.getFullYear(), current.getMonth() + 1, current.getDate(), current.getHours(), current.getMinutes(), current.getSeconds())
+    } else if (rule.freq === "yearly") {
+      current = new Date(current.getFullYear() + 1, current.getMonth(), current.getDate(), current.getHours(), current.getMinutes(), current.getSeconds())
+    } else {
+      break
+    }
+  }
+  return out
+}
+// Expanderar en hel events-lista i ett tidsfönster
+function expandEvents(events, fromDate, toDate) {
+  const out = []
+  events.forEach(ev => {
+    const occs = expandRecurring(ev, fromDate, toDate)
+    out.push(...occs)
+  })
+  return out
+}
 
 // ════════════════════════════════════════════════
 //  HOOKS
@@ -206,14 +275,22 @@ function CalendarWidget({ events, persons, fill, compact, onDayClick }) {
   if (week.length > 0) { while (week.length < 7) week.push(null); weeks.push(week) }
 
   const eventsForView = useMemo(() => {
+    // Expandera återkommande events över hela visnings-månaden
+    const monthStart = new Date(vy, vm, 1)
+    const monthEnd = new Date(vy, vm + 1, 0, 23, 59, 59)
+    const expanded = expandEvents(events, monthStart, monthEnd)
     const out = {}
-    events.forEach(ev => {
+    expanded.forEach(ev => {
       const d = new Date(ev.start_time)
       if (d.getFullYear() === vy && d.getMonth() === vm) {
         const day = d.getDate()
         if (!out[day]) out[day] = []
         const p = getPersonForEvent(ev, persons)
-        out[day].push({ id: ev.id, time: fmtTime(ev.start_time), title: ev.title, color: p.color, name: p.name })
+        out[day].push({
+          id: ev.id, time: fmtTime(ev.start_time), title: ev.title,
+          color: p.color, name: p.name,
+          recurring: !!ev.master_id,
+        })
       }
     })
     Object.keys(out).forEach(k => out[k].sort((a, b) => a.time.localeCompare(b.time)))
@@ -271,7 +348,11 @@ function CalendarWidget({ events, persons, fill, compact, onDayClick }) {
                         color: ev.color, background: `${ev.color}12`,
                         borderRadius: 3, padding: "0px 2px", lineHeight: 1.3,
                         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 1,
-                      }}>{ev.time} {ev.title}</div>
+                        display: "flex", alignItems: "center", gap: 2,
+                      }}>
+                        {ev.recurring && <Repeat size={compact ? 5 : 6} style={{ flexShrink: 0 }} />}
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.time} {ev.title}</span>
+                      </div>
                     ))}
                     {dayEvents.length > (fill ? 2 : 1) && (
                       <div style={{ fontSize: 6, color: t.textMuted, textAlign: "center" }}>+{dayEvents.length - (fill ? 2 : 1)}</div>
@@ -307,6 +388,8 @@ function AddEventModal({ open, prefillDate, persons, onClose, onSave }) {
   const [personIdx, setPersonIdx] = useState(0)
   const [shared, setShared] = useState(true)
   const [notify, setNotify] = useState(true)
+  const [recurrence, setRecurrence] = useState(null) // null | "daily" | "weekdays" | "weekly" | "monthly" | "yearly"
+  const [recurUntil, setRecurUntil] = useState("") // tom = för alltid
 
   // Prefilla datum när modalen öppnas
   useEffect(() => {
@@ -315,6 +398,8 @@ function AddEventModal({ open, prefillDate, persons, onClose, onSave }) {
       setTitle("")
       setTime("12:00")
       setEndTime("13:00")
+      setRecurrence(null)
+      setRecurUntil("")
     }
   }, [open, prefillDate])
 
@@ -322,6 +407,9 @@ function AddEventModal({ open, prefillDate, persons, onClose, onSave }) {
 
   function submit() {
     if (!title.trim()) return
+    const recurrence_rule = recurrence
+      ? (recurUntil ? { freq: recurrence, until: recurUntil } : { freq: recurrence })
+      : null
     onSave({
       title: title.trim(),
       start_time: date + "T" + time + ":00",
@@ -329,6 +417,7 @@ function AddEventModal({ open, prefillDate, persons, onClose, onSave }) {
       location: null,
       color: persons[personIdx]?.color || ACCENT.event,
       shared,
+      recurrence_rule,
     })
     onClose()
   }
@@ -383,6 +472,33 @@ function AddEventModal({ open, prefillDate, persons, onClose, onSave }) {
           </div>
           <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 600, color: notify ? t.text : t.textSec }}>Påminnelse</span>
         </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <Repeat size={14} color={t.textSec} />
+            <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textSec, fontWeight: 600 }}>Upprepning</span>
+          </div>
+          <select value={recurrence || ""} onChange={e => setRecurrence(e.target.value || null)} style={{ ...inputStyle, fontSize: 13 }}>
+            {RECURRENCE_OPTIONS.map(opt => (
+              <option key={opt.id || "none"} value={opt.id || ""}>{opt.label}</option>
+            ))}
+          </select>
+          {recurrence && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+              <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textSec }}>Slut:</span>
+              <input type="date" value={recurUntil} onChange={e => setRecurUntil(e.target.value)} style={{ ...inputStyle, fontSize: 12, flex: 1 }} placeholder="Aldrig" />
+              {recurUntil && (
+                <button onClick={() => setRecurUntil("")} style={{ background: "none", border: "none", cursor: "pointer", color: t.textMuted, padding: 2, display: "flex" }}>
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          )}
+          {recurrence && !recurUntil && (
+            <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textMuted }}>Upprepas för alltid (tills du sätter slutdatum eller raderar)</span>
+          )}
+        </div>
+
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
           <Btn outline small onClick={onClose}><X size={12} /> Avbryt</Btn>
           <Btn small color={ACCENT.calendar} onClick={submit} disabled={!title.trim()}><Check size={12} /> Spara</Btn>
@@ -419,12 +535,10 @@ function CalendarTab({ isMobile, events, persons, onAddEvent, onDeleteEvent, use
 
   const eventsToday = useMemo(() => {
     const today = new Date()
-    return events
-      .filter(e => {
-        const d = new Date(e.start_time)
-        return d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate()
-      })
-      .sort((a, b) => new Date(a.start_time) - new Date(b.start_time))
+    const dayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+    const dayEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59)
+    const expanded = expandEvents(events, dayStart, dayEnd)
+    return expanded.sort((a, b) => new Date(a.start_time) - new Date(b.start_time))
   }, [events])
 
   return (
@@ -491,15 +605,28 @@ function CalendarTab({ isMobile, events, persons, onAddEvent, onDeleteEvent, use
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
               {eventsToday.map(ev => {
                 const p = getPersonForEvent(ev, persons)
+                const isRecurring = !!ev.master_id || !!ev.recurrence_rule
+                function tryDelete() {
+                  if (isRecurring) {
+                    if (confirm("Detta är en återkommande händelse. Tar du bort den raderas hela serien. Fortsätta?")) {
+                      onDeleteEvent(ev.id)
+                    }
+                  } else {
+                    onDeleteEvent(ev.id)
+                  }
+                }
                 return (
                   <div key={ev.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", background: `${p.color}08`, borderRadius: 10, border: `1px solid ${p.color}15` }}>
                     <div style={{ width: 3, height: 28, borderRadius: 2, background: p.color, flexShrink: 0 }} />
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 11, color: t.textMuted }}>{fmtTime(ev.start_time)}</div>
+                      <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 11, color: t.textMuted, display: "flex", alignItems: "center", gap: 4 }}>
+                        {fmtTime(ev.start_time)}
+                        {isRecurring && <Repeat size={10} color={t.textMuted} />}
+                      </div>
                       <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, color: t.text, fontWeight: 600 }}>{ev.title}</div>
                       {ev.location && <div style={{ fontSize: 11, color: t.textMuted, marginTop: 1, display: "flex", alignItems: "center", gap: 3 }}><MapPin size={10} /> {ev.location}</div>}
                     </div>
-                    <button onClick={() => onDeleteEvent(ev.id)} style={{ background: "none", border: "none", cursor: "pointer", color: t.textMuted, padding: 4 }}><X size={14} /></button>
+                    <button onClick={tryDelete} style={{ background: "none", border: "none", cursor: "pointer", color: t.textMuted, padding: 4 }}><X size={14} /></button>
                   </div>
                 )
               })}
@@ -2195,12 +2322,15 @@ export default function SmartHub({ session, household }) {
       household_id: householdId, title: ev.title,
       start_time: ev.start_time, end_time: ev.end_time,
       location: ev.location, color: ev.color, shared: ev.shared,
+      recurrence_rule: ev.recurrence_rule || null,
       created_by: userId,
     })
   }
+  // Om id är från en återkommande instans (innehåller "_occ_"), ta bort hela serien.
   async function handleDeleteEvent(id) {
-    setCalEvents(p => p.filter(e => e.id !== id))
-    await supabase.from("calendar_events").delete().eq("id", id)
+    const realId = typeof id === "string" && id.includes("_occ_") ? id.split("_occ_")[0] : id
+    setCalEvents(p => p.filter(e => e.id !== realId))
+    await supabase.from("calendar_events").delete().eq("id", realId)
   }
   async function handleSetMealText(weekday, text) {
     if (!text) {
