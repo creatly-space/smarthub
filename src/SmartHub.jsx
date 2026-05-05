@@ -701,7 +701,34 @@ function ListsView({ lists, pinnedListId, onToggleItem, onTogglePin, onToggleSha
 // ════════════════════════════════════════════════
 //  ARCHIVE VIEW (söker bland arkiverade listor)
 // ════════════════════════════════════════════════
-function ArchiveView({ archivedLists, onRestore, onDeletePermanent, onClose }) {
+function ListTabSwitch({ activeCount, archivedCount, showArchive, setShowArchive }) {
+  const tabStyle = (active) => ({
+    flex: 1,
+    padding: "10px 14px",
+    background: active ? t.card : "transparent",
+    border: "none",
+    borderBottom: active ? `2px solid ${ACCENT.calendar}` : `2px solid transparent`,
+    cursor: "pointer",
+    fontFamily: "Nunito, sans-serif",
+    fontWeight: active ? 700 : 500,
+    fontSize: 13,
+    color: active ? t.text : t.textSec,
+    transition: "all 0.15s",
+    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+  })
+  return (
+    <div style={{ display: "flex", marginBottom: 16, borderBottom: `1px solid ${t.cardBorder}` }}>
+      <button onClick={() => setShowArchive(false)} style={tabStyle(!showArchive)}>
+        <ListChecks size={14} /> Aktiva {activeCount > 0 && <span style={{ fontSize: 11, color: t.textMuted, fontWeight: 500 }}>({activeCount})</span>}
+      </button>
+      <button onClick={() => setShowArchive(true)} style={tabStyle(showArchive)}>
+        <Archive size={14} /> Arkiverade {archivedCount > 0 && <span style={{ fontSize: 11, color: t.textMuted, fontWeight: 500 }}>({archivedCount})</span>}
+      </button>
+    </div>
+  )
+}
+
+function ArchiveView({ archivedLists, onRestore, onDeletePermanent }) {
   const [query, setQuery] = useState("")
   const [confirmDelete, setConfirmDelete] = useState(null) // list id
 
@@ -724,16 +751,6 @@ function ArchiveView({ archivedLists, onRestore, onDeletePermanent, onClose }) {
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-        <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
-          <ChevronLeft size={20} color={t.textSec} />
-        </button>
-        <h2 style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 22, fontWeight: 700, color: t.text, margin: 0 }}>Arkiv</h2>
-        <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textMuted, marginLeft: "auto" }}>
-          {archivedLists.length} {archivedLists.length === 1 ? "lista" : "listor"}
-        </span>
-      </div>
-
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: t.inputBg, border: `1px solid ${t.inputBorder}`, borderRadius: 12, marginBottom: 14 }}>
         <Search size={16} color={t.textMuted} />
         <input
@@ -1540,38 +1557,35 @@ function TabContent({
   }
   if (tab === "kalender") return <div style={{ padding: pad }}><CalendarTab isMobile={isMobile} events={calEvents} persons={persons} onAddEvent={onAddEvent} onDeleteEvent={onDeleteEvent} userId={userId} /></div>
   if (tab === "listor") {
-    if (showArchive) {
-      return (
-        <div style={{ padding: pad }}>
+    return (
+      <div style={{ padding: pad }}>
+        <h2 style={{ fontFamily: "Comfortaa, sans-serif", fontSize: isMobile ? 22 : 24, fontWeight: 700, color: t.text, margin: "0 0 14px" }}>Listor</h2>
+        <ListTabSwitch
+          activeCount={listsWithItems.length}
+          archivedCount={archivedLists.length}
+          showArchive={showArchive}
+          setShowArchive={setShowArchive}
+        />
+        {showArchive ? (
           <ArchiveView
             archivedLists={archivedLists}
             onRestore={onRestoreList}
             onDeletePermanent={onDeleteList}
-            onClose={() => setShowArchive(false)}
           />
-        </div>
-      )
-    }
-    return (
-      <div style={{ padding: pad }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <h2 style={{ fontFamily: "Comfortaa, sans-serif", fontSize: isMobile ? 22 : 24, fontWeight: 700, color: t.text, margin: 0 }}>Listor</h2>
-          <Btn outline small color={t.textSec} onClick={() => setShowArchive(true)}>
-            <Archive size={12} /> Arkiv {archivedLists.length > 0 && `(${archivedLists.length})`}
-          </Btn>
-        </div>
-        <ListsView
-          lists={listsWithItems}
-          pinnedListId={pinnedListId}
-          onToggleItem={onToggleItem}
-          onTogglePin={onTogglePin}
-          onToggleShared={onToggleShared}
-          onAddTodo={onAddTodo}
-          onAddList={onAddList}
-          onDeleteList={onDeleteList}
-          onDeleteTodo={onDeleteTodo}
-          onArchiveList={onArchiveList}
-        />
+        ) : (
+          <ListsView
+            lists={listsWithItems}
+            pinnedListId={pinnedListId}
+            onToggleItem={onToggleItem}
+            onTogglePin={onTogglePin}
+            onToggleShared={onToggleShared}
+            onAddTodo={onAddTodo}
+            onAddList={onAddList}
+            onDeleteList={onDeleteList}
+            onDeleteTodo={onDeleteTodo}
+            onArchiveList={onArchiveList}
+          />
+        )}
       </div>
     )
   }
@@ -2076,6 +2090,30 @@ export default function SmartHub({ session, household }) {
     ),
     [allListsWithItems]
   )
+
+  // Auto-arkivera listor där alla items är bockade (och listan har minst 1 item).
+  // useRef-guarden förhindrar dubbel-trigger om både realtime + lokal optimistic uppdaterar.
+  const autoArchiveBusyRef = useRef(new Set())
+  useEffect(() => {
+    if (!householdId) return
+    const candidates = lists.filter(l =>
+      !l.archived
+      && l.household_id === householdId
+      && !autoArchiveBusyRef.current.has(l.id)
+    ).filter(l => {
+      const items = todos.filter(td => td.list_id === l.id)
+      return items.length > 0 && items.every(td => td.done)
+    })
+    if (candidates.length === 0) return
+    candidates.forEach(l => {
+      autoArchiveBusyRef.current.add(l.id)
+      handleArchiveList(l.id).finally(() => {
+        // släpp efter en kort delay så det inte triggar igen omedelbart
+        setTimeout(() => autoArchiveBusyRef.current.delete(l.id), 1500)
+      })
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lists, todos, householdId])
 
   // pinned är nu en kolumn i lists-tabellen. Hitta den listan, fall tillbaka till första aktiva.
   const pinnedListId = useMemo(
