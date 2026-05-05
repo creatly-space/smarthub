@@ -1713,23 +1713,9 @@ export default function SmartHub({ session, household }) {
   function openAddEvent(date) { setAddEventModal({ open: true, date }) }
   function closeAddEvent() { setAddEventModal({ open: false, date: null }) }
 
-  // TODO(migration): När lists.pinned finns, byt mot per-list persisterad pinned.
-  const [pinnedListId, setPinnedListId] = useState(null)
-  // TODO(migration): När meals.tag finns, lyft tag till meals-tabellen.
-  const [mealTagsLocal, setMealTagsLocal] = useState({})
-  // TODO(migration): När food_preferences-tabellen finns, persistera.
-  const [foodPrefs, setFoodPrefs] = useState(() => {
-    if (typeof window === "undefined") return { likes: [], dislikes: [], budget: "blandat", notes: "" }
-    try {
-      const stored = localStorage.getItem("smarthub:foodPrefs:" + (userId || "anon"))
-      if (stored) return JSON.parse(stored)
-    } catch {}
-    return { likes: ["Pasta", "Kyckling", "Lax"], dislikes: ["Lever"], budget: "blandat", notes: "" }
-  })
-  useEffect(() => {
-    if (typeof window === "undefined" || !userId) return
-    try { localStorage.setItem("smarthub:foodPrefs:" + userId, JSON.stringify(foodPrefs)) } catch {}
-  }, [foodPrefs, userId])
+  // ── Food-prefs (laddas från food_preferences-tabellen) ──
+  const [foodPrefs, setFoodPrefs] = useState({ likes: [], dislikes: [], budget: "blandat", notes: "" })
+  const foodPrefsLoadedRef = useRef(false)
 
   // ── Current week (for meals) ──
   const currentWeekStart = useMemo(() => {
@@ -1902,6 +1888,42 @@ export default function SmartHub({ session, household }) {
     return () => { cancelled = true }
   }, [householdId])
 
+  // ── Load: food_preferences (per användare) ──
+  useEffect(() => {
+    if (!userId) return
+    let cancelled = false
+    supabase.from("food_preferences").select("likes,dislikes,budget,notes").eq("user_id", userId).maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return
+        if (data) {
+          setFoodPrefs({
+            likes: data.likes || [],
+            dislikes: data.dislikes || [],
+            budget: data.budget || "blandat",
+            notes: data.notes || "",
+          })
+        }
+        foodPrefsLoadedRef.current = true
+      })
+    return () => { cancelled = true }
+  }, [userId])
+
+  // Debounced save av food_preferences vid varje ändring (efter att laddningen är klar)
+  useEffect(() => {
+    if (!userId || !foodPrefsLoadedRef.current) return
+    const ti = setTimeout(async () => {
+      await supabase.from("food_preferences").upsert({
+        user_id: userId,
+        likes: foodPrefs.likes,
+        dislikes: foodPrefs.dislikes,
+        budget: foodPrefs.budget,
+        notes: foodPrefs.notes,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "user_id" })
+    }, 600)
+    return () => clearTimeout(ti)
+  }, [foodPrefs, userId])
+
   // ── Derived data ──
   const persons = useMemo(() => members.map((m, i) => ({
     user_id: m.user_id,
@@ -1917,14 +1939,24 @@ export default function SmartHub({ session, household }) {
     })),
   })), [lists, todos])
 
-  // Default pinned list = first list with items (if user hasn't picked one)
-  const effectivePinnedId = pinnedListId || listsWithItems[0]?.id || null
-  const pinnedList = listsWithItems.find(l => l.id === effectivePinnedId) || listsWithItems[0]
+  // pinned är nu en kolumn i lists-tabellen. Hitta den listan, fall tillbaka till första.
+  const pinnedListId = useMemo(
+    () => lists.find(l => l.pinned)?.id || listsWithItems[0]?.id || null,
+    [lists, listsWithItems]
+  )
+  const pinnedList = listsWithItems.find(l => l.id === pinnedListId) || listsWithItems[0]
 
   const mealsByWeekday = useMemo(() => {
     const m = {}
     meals.forEach(meal => { m[meal.weekday] = meal })
     return m
+  }, [meals])
+
+  // mealTagsLocal är nu härlett från meals.tag-kolumnen (weekday → tagId)
+  const mealTagsLocal = useMemo(() => {
+    const map = {}
+    meals.forEach(m => { if (m.tag) map[m.weekday] = m.tag })
+    return map
   }, [meals])
 
   // ── CRUD handlers (lifted verbatim from v10) ──
@@ -1954,17 +1986,23 @@ export default function SmartHub({ session, household }) {
   async function handleDeleteList(id) {
     setLists(p => p.filter(l => l.id !== id))
     await supabase.from("lists").delete().eq("id", id)
-    if (pinnedListId === id) setPinnedListId(null)
   }
   async function handleToggleSharedList(list) {
     setLists(p => p.map(l => l.id === list.id ? { ...l, shared: !l.shared } : l))
     await supabase.from("lists").update({ shared: !list.shared }).eq("id", list.id)
   }
-  function handleTogglePin(listId) {
-    setPinnedListId(prev => prev === listId ? null : listId)
-    // TODO(migration): När lists.pinned finns, byt mot:
-    //   await supabase.from("lists").update({pinned:false}).eq("household_id",householdId)
-    //   await supabase.from("lists").update({pinned:true}).eq("id",listId)
+  // Endast EN lista i hushållet kan vara pinned åt gången. Toggla av om redan pinned.
+  async function handleTogglePin(listId) {
+    const target = lists.find(l => l.id === listId)
+    if (!target) return
+    const newPinned = !target.pinned
+    // Optimistic: uppdatera local state direkt
+    setLists(p => p.map(l => l.household_id === householdId
+      ? { ...l, pinned: l.id === listId ? newPinned : false }
+      : l))
+    // Avpinna alla andra i hushållet, sätt pinned på den valda
+    await supabase.from("lists").update({ pinned: false }).eq("household_id", householdId).neq("id", listId)
+    await supabase.from("lists").update({ pinned: newPinned }).eq("id", listId)
   }
   async function handleAddEvent(ev) {
     await supabase.from("calendar_events").insert({
@@ -1999,11 +2037,20 @@ export default function SmartHub({ session, household }) {
       else setMeals(p => p.map(m => m.id === tmp.id ? data : m))
     }
   }
-  function handleSetMealTag(weekday, tag) {
-    setMealTagsLocal(prev => ({ ...prev, [weekday]: tag }))
-    // TODO(migration): När meals.tag finns, persistera:
-    //   const ex = meals.find(m=>m.weekday===weekday)
-    //   if(ex) await supabase.from("meals").update({tag}).eq("id",ex.id)
+  // tag persisteras i meals.tag-kolumnen. Om raden saknas (t.ex. tag på en dag utan meal_text)
+  // skapar vi ett tomt meals-rad med bara taggen.
+  async function handleSetMealTag(weekday, tag) {
+    const ex = meals.find(m => m.weekday === weekday)
+    if (ex) {
+      setMeals(p => p.map(m => m.id === ex.id ? { ...m, tag } : m))
+      await supabase.from("meals").update({ tag }).eq("id", ex.id)
+    } else if (tag) {
+      const tmp = { id: "tmp-" + Date.now(), household_id: householdId, week_start_date: currentWeekStart, weekday, meal_text: "", tag }
+      setMeals(p => [...p, tmp])
+      const { data, error } = await supabase.from("meals").insert({ household_id: householdId, week_start_date: currentWeekStart, weekday, meal_text: "", tag }).select().single()
+      if (error) setMeals(p => p.filter(m => m.id !== tmp.id))
+      else setMeals(p => p.map(m => m.id === tmp.id ? data : m))
+    }
   }
   async function handleSaveTvLayout(widgets) {
     setTvWidgets(widgets)
@@ -2097,7 +2144,7 @@ export default function SmartHub({ session, household }) {
 
   const tabContentProps = {
     tab, isMobile: view === "mobile", weather,
-    listsWithItems, pinnedListId: effectivePinnedId,
+    listsWithItems, pinnedListId,
     onToggleItem: handleToggleTodo,
     onTogglePin: handleTogglePin,
     onToggleShared: handleToggleSharedList,
