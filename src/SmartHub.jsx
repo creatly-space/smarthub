@@ -1928,7 +1928,7 @@ function TvLayout(props) {
       position: "fixed", top: 0, left: 0, overflow: "hidden",
       zoom: 2, transformOrigin: "top left",
     }}>
-      <style>{"html,body{margin:0!important;padding:0!important;overflow:hidden!important;background:#000!important} *::-webkit-scrollbar{display:none!important}"}</style>
+      <style>{"html,body{margin:0!important;padding:0!important;overflow:hidden!important;background:#000!important}"}</style>
       <TvViewContent {...props} />
     </div>
   )
@@ -2440,6 +2440,12 @@ export default function SmartHub({ session, household }) {
       body{margin:0;background:${t.bg};font-family:'Nunito',sans-serif;color:${t.text};-webkit-font-smoothing:antialiased}
       *{box-sizing:border-box}
       @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+      /* Tunna scrollbars som matchar v11-estetiken */
+      *::-webkit-scrollbar { width: 6px; height: 6px; }
+      *::-webkit-scrollbar-track { background: transparent; }
+      *::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 3px; transition: background 0.2s; }
+      *::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); }
+      * { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.15) transparent; }
     `}</style>
   )
 
