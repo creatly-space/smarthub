@@ -329,7 +329,7 @@ function CalendarWidget({ events, persons, fill, compact, large, onDayClick }) {
         </div>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: large ? 3 : 1 }}>
           {weeks.map((wk, wi) => (
-            <div key={wi} style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, flex: 1, minHeight: large ? 56 : undefined }}>
+            <div key={wi} style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, flex: 1, minHeight: large ? 72 : undefined }}>
               {wk.map((day, di) => {
                 const isToday = day === today.getDate() && isCurrentMonth
                 const dayEvents = day ? (eventsForView[day] || []) : []
@@ -356,22 +356,26 @@ function CalendarWidget({ events, persons, fill, compact, large, onDayClick }) {
                       color: !day ? "transparent" : isToday ? ACCENT.calendar : t.text,
                       textAlign: "center", lineHeight: 1, marginBottom: large ? 3 : 1,
                     }}>{day || ""}</div>
-                    {dayEvents.slice(0, large ? 3 : fill ? 2 : 1).map((ev) => (
+                    {dayEvents.slice(0, large ? 2 : fill ? 2 : 1).map((ev) => (
                       <div key={ev.id} style={{
-                        fontSize: large ? 9 : compact ? 6 : 7,
+                        fontSize: large ? 11 : compact ? 6 : 7,
                         fontFamily: "Nunito, sans-serif", fontWeight: 700,
-                        color: ev.color, background: `${ev.color}12`,
-                        borderRadius: 3, padding: large ? "1px 4px" : "0px 2px",
+                        color: ev.color, background: `${ev.color}15`,
+                        borderRadius: large ? 4 : 3,
+                        padding: large ? "2px 5px" : "0px 2px",
                         lineHeight: 1.3,
-                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 1,
-                        display: "flex", alignItems: "center", gap: 2,
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        marginBottom: large ? 2 : 1,
+                        display: "flex", alignItems: "center", gap: 3,
                       }}>
-                        {ev.recurring && <Repeat size={large ? 8 : compact ? 5 : 6} style={{ flexShrink: 0 }} />}
-                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.time} {ev.title}</span>
+                        {ev.recurring && <Repeat size={large ? 9 : compact ? 5 : 6} style={{ flexShrink: 0 }} />}
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{large ? ev.title : `${ev.time} ${ev.title}`}</span>
                       </div>
                     ))}
-                    {dayEvents.length > (large ? 3 : fill ? 2 : 1) && (
-                      <div style={{ fontSize: large ? 9 : 6, color: t.textMuted, textAlign: "center" }}>+{dayEvents.length - (large ? 3 : fill ? 2 : 1)}</div>
+                    {dayEvents.length > (large ? 2 : fill ? 2 : 1) && (
+                      <div style={{ fontSize: large ? 10 : 6, color: t.textMuted, textAlign: "center", fontWeight: 700, marginTop: 1 }}>
+                        +{dayEvents.length - (large ? 2 : fill ? 2 : 1)} fler
+                      </div>
                     )}
                   </div>
                 )
@@ -524,31 +528,95 @@ function AddEventModal({ open, prefillDate, persons, onClose, onSave }) {
   )
 }
 
-function CalendarTab({ isMobile, events, persons, onAddEvent, onDeleteEvent, userId }) {
-  const [showAdd, setShowAdd] = useState(false)
-  const [title, setTitle] = useState("")
-  const [date, setDate] = useState(fmtDate(new Date()))
-  const [time, setTime] = useState("12:00")
-  const [endTime, setEndTime] = useState("13:00")
-  const [personIdx, setPersonIdx] = useState(0)
-  const [color, setColor] = useState(ACCENT.event)
-  const [shared, setShared] = useState(true)
-  const [notify, setNotify] = useState(true)
+// Modal som visar alla händelser för en specifik dag, med möjlighet att lägga till ny.
+function DayModal({ open, date, events, persons, onClose, onAddEvent, onDeleteEvent }) {
+  if (!open || !date) return null
+  const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  const dayEnd = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59)
+  const dayEvents = expandEvents(events, dayStart, dayEnd).sort((a, b) =>
+    new Date(a.start_time) - new Date(b.start_time)
+  )
+  const dateStr = date.toLocaleDateString("sv-SE", { weekday: "long", day: "numeric", month: "long" })
+  const isToday = (() => {
+    const now = new Date()
+    return now.getFullYear() === date.getFullYear() && now.getMonth() === date.getMonth() && now.getDate() === date.getDate()
+  })()
 
-  function reset() { setTitle(""); setDate(fmtDate(new Date())); setTime("12:00"); setEndTime("13:00"); setShowAdd(false) }
-  function submit() {
-    if (!title.trim()) return
-    onAddEvent({
-      title: title.trim(),
-      start_time: date + "T" + time + ":00",
-      end_time: date + "T" + endTime + ":00",
-      location: null,
-      color: persons[personIdx]?.color || color,
-      shared,
-    })
-    reset()
+  function handleDelete(ev) {
+    const isRecurring = !!ev.master_id || !!ev.recurrence_rule
+    if (isRecurring) {
+      if (!confirm("Detta är en återkommande händelse. Tar du bort den raderas hela serien. Fortsätta?")) return
+    }
+    onDeleteEvent(ev.id)
   }
 
+  return (
+    <div onClick={onClose} style={{
+      position: "fixed", inset: 0, zIndex: 290,
+      background: "rgba(0,0,0,0.4)",
+      display: "flex", alignItems: "flex-end", justifyContent: "center",
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: t.card, borderRadius: "20px 20px 0 0",
+        width: "100%", maxWidth: 560,
+        maxHeight: "80vh",
+        display: "flex", flexDirection: "column",
+        boxShadow: "0 -4px 24px rgba(0,0,0,0.15)",
+      }}>
+        <div style={{ padding: "16px 20px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${t.line}` }}>
+          <div>
+            <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 18, fontWeight: 700, color: t.text, textTransform: "capitalize" }}>{dateStr}</div>
+            {isToday && <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: ACCENT.calendar, fontWeight: 700, marginTop: 2 }}>Idag</div>}
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}>
+            <X size={20} color={t.textSec} />
+          </button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: "auto", padding: "12px 20px" }}>
+          {dayEvents.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "24px 0", fontFamily: "Nunito, sans-serif", fontSize: 13, color: t.textMuted }}>
+              Inga händelser den här dagen
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {dayEvents.map(ev => {
+                const p = getPersonForEvent(ev, persons)
+                const isRecurring = !!ev.master_id || !!ev.recurrence_rule
+                return (
+                  <div key={ev.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", background: `${p.color}08`, borderRadius: 10, border: `1px solid ${p.color}15` }}>
+                    <div style={{ width: 4, height: 36, borderRadius: 2, background: p.color, flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 12, color: t.textMuted, display: "flex", alignItems: "center", gap: 4 }}>
+                        {fmtTime(ev.start_time)}
+                        {ev.end_time && ev.end_time !== ev.start_time && ` – ${fmtTime(ev.end_time)}`}
+                        {isRecurring && <Repeat size={10} color={t.textMuted} />}
+                      </div>
+                      <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 14, color: t.text, fontWeight: 600 }}>{ev.title}</div>
+                      {p.name && <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: p.color, fontWeight: 700, marginTop: 2 }}>{p.name}</div>}
+                      {ev.location && <div style={{ fontSize: 11, color: t.textMuted, marginTop: 2, display: "flex", alignItems: "center", gap: 3 }}><MapPin size={10} /> {ev.location}</div>}
+                    </div>
+                    <button onClick={() => handleDelete(ev)} style={{ background: "none", border: "none", cursor: "pointer", color: t.textMuted, padding: 4 }}>
+                      <X size={16} />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        <div style={{ padding: "12px 20px 20px", borderTop: `1px solid ${t.line}` }}>
+          <Btn color={ACCENT.calendar} onClick={() => onAddEvent(date)} style={{ width: "100%", justifyContent: "center", padding: "12px 14px" }}>
+            <Plus size={14} /> Ny händelse
+          </Btn>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CalendarTab({ isMobile, events, persons, onAddEvent, onDeleteEvent, onOpenAddEvent, onOpenDayModal, userId }) {
   const eventsToday = useMemo(() => {
     const today = new Date()
     const dayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
@@ -561,57 +629,13 @@ function CalendarTab({ isMobile, events, persons, onAddEvent, onDeleteEvent, use
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <h2 style={{ fontFamily: "Comfortaa, sans-serif", fontSize: isMobile ? 22 : 24, fontWeight: 700, color: t.text, margin: 0 }}>Kalender</h2>
-        <Btn onClick={() => setShowAdd(s => !s)}><Plus size={14} /> Ny händelse</Btn>
+        <Btn onClick={() => onOpenAddEvent(new Date())}><Plus size={14} /> Ny händelse</Btn>
       </div>
-
-      {showAdd && (
-        <Card style={{ marginBottom: 16 }}>
-          <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 14, fontWeight: 700, color: t.text }}>Lägg till händelse</div>
-            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Vad ska hända?" style={{ ...inputStyle, fontSize: 14 }} autoFocus />
-            <div style={{ display: "flex", gap: 8 }}>
-              <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ ...inputStyle, flex: 1, fontSize: 13 }} />
-              <input type="time" value={time} onChange={e => setTime(e.target.value)} style={{ ...inputStyle, width: 100, fontSize: 13 }} />
-              <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} style={{ ...inputStyle, width: 100, fontSize: 13 }} />
-            </div>
-            {persons.length > 0 && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textSec, fontWeight: 600 }}>Vem:</span>
-                {persons.map((p, i) => (
-                  <button key={i} onClick={() => setPersonIdx(i)} style={{
-                    display: "flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 8,
-                    border: i === personIdx ? `2px solid ${p.color}` : `2px solid transparent`,
-                    background: `${p.color}10`, cursor: "pointer",
-                    fontFamily: "Nunito, sans-serif", fontSize: 12, fontWeight: 700, color: p.color,
-                  }}>{p.name}</button>
-                ))}
-              </div>
-            )}
-            <div onClick={() => setShared(s => !s)} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "4px 0" }}>
-              <div style={{ width: 36, height: 20, borderRadius: 10, background: shared ? ACCENT.calendar : t.textMuted, padding: 2, transition: "background 0.2s", display: "flex", alignItems: "center" }}>
-                <div style={{ width: 16, height: 16, borderRadius: 8, background: "#fff", transition: "transform 0.2s", transform: shared ? "translateX(16px)" : "translateX(0)" }} />
-              </div>
-              <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 600, color: shared ? t.text : t.textSec }}>{shared ? "Delad med hushållet" : "Bara för mig"}</span>
-            </div>
-            <div onClick={() => setNotify(n => !n)} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "4px 0" }}>
-              <div style={{ width: 36, height: 20, borderRadius: 10, background: notify ? ACCENT.calendar : t.textMuted, padding: 2, transition: "background 0.2s", display: "flex", alignItems: "center" }}>
-                <div style={{ width: 16, height: 16, borderRadius: 8, background: "#fff", transition: "transform 0.2s", transform: notify ? "translateX(16px)" : "translateX(0)" }} />
-              </div>
-              <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 600, color: notify ? t.text : t.textSec }}>Påminnelse</span>
-              {notify && <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textSec }}>1 timme innan (TODO: koppla notifiering)</span>}
-            </div>
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <Btn outline small onClick={reset}><X size={12} /> Avbryt</Btn>
-              <Btn small color={ACCENT.calendar} onClick={submit} disabled={!title.trim()}><Check size={12} /> Spara</Btn>
-            </div>
-          </div>
-        </Card>
-      )}
 
       <CalendarWidget
         events={events}
         persons={persons}
-        onDayClick={d => { setDate(fmtDate(d)); setShowAdd(true) }}
+        onDayClick={d => onOpenDayModal(d)}
       />
 
       {eventsToday.length > 0 && (
@@ -1805,7 +1829,7 @@ function TabContent({
   onAddTodo, onAddList, onDeleteList, onDeleteTodo, onArchiveList, onRestoreList,
   showArchive, setShowArchive, pinnedList,
   // calendar
-  calEvents, persons, onAddEvent, onDeleteEvent, onOpenAddEvent, userId,
+  calEvents, persons, onAddEvent, onDeleteEvent, onOpenAddEvent, onOpenDayModal, userId,
   // meals
   mealsByWeekday, mealTagsLocal, onSetMealText, onSetMealTag,
   foodPrefs, setFoodPrefs, onAiGenerate,
@@ -1822,7 +1846,7 @@ function TabContent({
           <CalendarWidget
             events={calEvents}
             persons={persons}
-            onDayClick={d => onOpenAddEvent(d)}
+            onDayClick={d => onOpenDayModal(d)}
             large={isMobile}
           />
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
@@ -1833,7 +1857,7 @@ function TabContent({
       </div>
     )
   }
-  if (tab === "kalender") return <div style={{ padding: pad }}><CalendarTab isMobile={isMobile} events={calEvents} persons={persons} onAddEvent={onAddEvent} onDeleteEvent={onDeleteEvent} userId={userId} /></div>
+  if (tab === "kalender") return <div style={{ padding: pad }}><CalendarTab isMobile={isMobile} events={calEvents} persons={persons} onAddEvent={onAddEvent} onDeleteEvent={onDeleteEvent} onOpenAddEvent={onOpenAddEvent} onOpenDayModal={onOpenDayModal} userId={userId} /></div>
   if (tab === "listor") {
     return (
       <div style={{ padding: pad }}>
@@ -2130,6 +2154,11 @@ export default function SmartHub({ session, household }) {
   const [addEventModal, setAddEventModal] = useState({ open: false, date: null })
   function openAddEvent(date) { setAddEventModal({ open: true, date }) }
   function closeAddEvent() { setAddEventModal({ open: false, date: null }) }
+
+  // Day-modal: visar dagens events + knapp för att lägga till ny
+  const [dayModal, setDayModal] = useState({ open: false, date: null })
+  function openDayModal(date) { setDayModal({ open: true, date }) }
+  function closeDayModal() { setDayModal({ open: false, date: null }) }
 
   // ── Food-prefs (laddas från food_preferences-tabellen) ──
   const [foodPrefs, setFoodPrefs] = useState({ likes: [], dislikes: [], budget: "blandat", notes: "" })
@@ -2686,14 +2715,25 @@ export default function SmartHub({ session, household }) {
     `}</style>
   )
 
-  const lifedAddEventModal = (
-    <AddEventModal
-      open={addEventModal.open}
-      prefillDate={addEventModal.date}
-      persons={persons}
-      onClose={closeAddEvent}
-      onSave={handleAddEvent}
-    />
+  const liftedModals = (
+    <>
+      <DayModal
+        open={dayModal.open}
+        date={dayModal.date}
+        events={calEvents}
+        persons={persons}
+        onClose={closeDayModal}
+        onAddEvent={(d) => { closeDayModal(); openAddEvent(d) }}
+        onDeleteEvent={handleDeleteEvent}
+      />
+      <AddEventModal
+        open={addEventModal.open}
+        prefillDate={addEventModal.date}
+        persons={persons}
+        onClose={closeAddEvent}
+        onSave={handleAddEvent}
+      />
+    </>
   )
 
   // ─── TV view ───
@@ -2710,9 +2750,9 @@ export default function SmartHub({ session, household }) {
           mealTagsLocal={mealTagsLocal}
           weather={weather}
           slots={tvSlots}
-          onDayClick={openAddEvent}
+          onDayClick={openDayModal}
         />
-        {lifedAddEventModal}
+        {liftedModals}
       </>
     )
   }
@@ -2731,7 +2771,7 @@ export default function SmartHub({ session, household }) {
     onRestoreList: handleRestoreList,
     showArchive, setShowArchive,
     pinnedList,
-    calEvents, persons, onAddEvent: handleAddEvent, onDeleteEvent: handleDeleteEvent, onOpenAddEvent: openAddEvent, userId,
+    calEvents, persons, onAddEvent: handleAddEvent, onDeleteEvent: handleDeleteEvent, onOpenAddEvent: openAddEvent, onOpenDayModal: openDayModal, userId,
     mealsByWeekday, mealTagsLocal,
     onSetMealText: handleSetMealText,
     onSetMealTag: handleSetMealTag,
@@ -2759,7 +2799,7 @@ export default function SmartHub({ session, household }) {
           <MobileNav tab={tab} setTab={setTab} />
           <AiChat position="mobile" callAi={callAiChat} executeTool={executeAiTool} />
         </div>
-        {lifedAddEventModal}
+        {liftedModals}
       </>
     )
   }
@@ -2775,7 +2815,7 @@ export default function SmartHub({ session, household }) {
           <AiChat position="desktop" callAi={callAiChat} executeTool={executeAiTool} />
         </div>
       </div>
-      {lifedAddEventModal}
+      {liftedModals}
     </>
   )
 }
