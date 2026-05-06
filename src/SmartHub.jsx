@@ -111,17 +111,22 @@ function recurrenceLabel(rule) {
 }
 // Expanderar ett event med recurrence_rule till en lista av virtuella förekomster
 // inom [from, to]. Master-eventet får `master_id = event.id` på varje instans.
-// Begränsar till max 200 förekomster per event för att undvika oändliga loopar.
+// För icke-återkommande events: returnera bara om start_time är inom [from, to].
 function expandRecurring(event, from, to) {
-  if (!event.recurrence_rule || !event.recurrence_rule.freq) return [event]
+  const fromMs = from.getTime()
+  const toMs = to.getTime()
+  if (!event.recurrence_rule || !event.recurrence_rule.freq) {
+    // Vanlig (icke-återkommande) händelse: ta med endast om den infaller inom fönstret
+    const startMs = new Date(event.start_time).getTime()
+    if (startMs >= fromMs && startMs <= toMs) return [event]
+    return []
+  }
   const rule = event.recurrence_rule
   const out = []
   const startMs = new Date(event.start_time).getTime()
   const endMs = new Date(event.end_time).getTime()
   const duration = endMs - startMs
   const untilMs = rule.until ? new Date(rule.until + "T23:59:59").getTime() : Infinity
-  const fromMs = from.getTime()
-  const toMs = to.getTime()
   let current = new Date(startMs)
   let safety = 0
   while (current.getTime() <= toMs && current.getTime() <= untilMs && safety < 1000) {
