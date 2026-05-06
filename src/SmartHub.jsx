@@ -641,10 +641,14 @@ function CalendarTab({ isMobile, events, persons, onAddEvent, onDeleteEvent, use
 // ════════════════════════════════════════════════
 //  LISTS
 // ════════════════════════════════════════════════
-function TodoCard({ pinnedList, onToggle, fill }) {
+function TodoCard({ pinnedList, onToggle, fill, maxHeight }) {
   const list = pinnedList || { id: null, name: "Att göra", color: ACCENT.todo, items: [] }
   const items = list.items || []
   const doneCount = items.filter(i => i.done).length
+  // Hem-vy: cap höjd + scroll. TV (fill): följer flex-parent + scroll inuti.
+  const listContainerStyle = fill
+    ? { display: "flex", flexDirection: "column", gap: 6, flex: 1, overflowY: "auto", minHeight: 0 }
+    : { display: "flex", flexDirection: "column", gap: 6, flex: 1, overflowY: "auto", maxHeight: maxHeight || 280 }
   return (
     <Card accent={list.color || ACCENT.todo} style={fill ? { flex: 1, minHeight: 0 } : {}}>
       <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
@@ -652,12 +656,12 @@ function TodoCard({ pinnedList, onToggle, fill }) {
           <Label color={list.color || ACCENT.todo} icon={ListChecks}>{list.name}</Label>
           <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textSec }}>{doneCount}/{items.length}</span>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1 }}>
+        <div style={listContainerStyle}>
           {items.length === 0 && (
             <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textMuted, fontStyle: "italic" }}>Inga uppgifter</span>
           )}
-          {items.slice(0, fill ? 6 : 4).map(item => (
-            <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => onToggle(item)}>
+          {items.map(item => (
+            <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", flexShrink: 0 }} onClick={() => onToggle(item)}>
               <div style={{
                 width: 20, height: 20, borderRadius: 6,
                 border: item.done ? "none" : `2px solid ${t.textMuted}`,
@@ -1816,7 +1820,7 @@ const DEFAULT_TV_SLOTS = { main: "calendar", bottomLeft: "todo", bottomRight: "m
 
 // Standardiserad widget-renderer för TV-slots
 function renderTvSlotWidget(type, p) {
-  if (type === "calendar") return <CalendarWidget events={p.calEvents} persons={p.persons} fill />
+  if (type === "calendar") return <CalendarWidget events={p.calEvents} persons={p.persons} fill onDayClick={p.onDayClick} />
   if (type === "todo")     return <TodoCard pinnedList={p.pinnedList} onToggle={p.onToggleItem} fill />
   if (type === "meal")     return <MealCard fill mealsByWeekday={p.mealsByWeekday} mealTagsLocal={p.mealTagsLocal} onSetMealText={() => {}} onSetMealTag={() => {}} />
   if (type === "events")   return <TvEventsCard events={p.calEvents} persons={p.persons} />
@@ -1865,9 +1869,9 @@ function TvEventsCard({ events, persons }) {
 // `slots` styr vilka widgets som syns i de 3 slottarna (main, bottomLeft, bottomRight).
 // `slotOverlay(slotId)` är en valfri render prop som lägger en klickbar overlay över varje slot
 // (används av editor:n för att kunna byta widget).
-function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, weather, slots, slotOverlay }) {
+function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, weather, slots, slotOverlay, onDayClick }) {
   const s = { ...DEFAULT_TV_SLOTS, ...(slots || {}) }
-  const widgetProps = { persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal }
+  const widgetProps = { persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, onDayClick }
   return (
     <div style={{
       width: "100%", height: "100%",
@@ -2439,6 +2443,16 @@ export default function SmartHub({ session, household }) {
     `}</style>
   )
 
+  const lifedAddEventModal = (
+    <AddEventModal
+      open={addEventModal.open}
+      prefillDate={addEventModal.date}
+      persons={persons}
+      onClose={closeAddEvent}
+      onSave={handleAddEvent}
+    />
+  )
+
   // ─── TV view ───
   if (view === "tv") {
     return (
@@ -2453,7 +2467,9 @@ export default function SmartHub({ session, household }) {
           mealTagsLocal={mealTagsLocal}
           weather={weather}
           slots={tvSlots}
+          onDayClick={openAddEvent}
         />
+        {lifedAddEventModal}
       </>
     )
   }
@@ -2487,16 +2503,6 @@ export default function SmartHub({ session, household }) {
     },
     tvSlots, onSaveTvSlots: handleSaveTvSlots,
   }
-
-  const lifedAddEventModal = (
-    <AddEventModal
-      open={addEventModal.open}
-      prefillDate={addEventModal.date}
-      persons={persons}
-      onClose={closeAddEvent}
-      onSave={handleAddEvent}
-    />
-  )
 
   // ─── Mobile view ───
   if (view === "mobile") {
