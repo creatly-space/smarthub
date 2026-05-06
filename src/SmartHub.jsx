@@ -79,6 +79,18 @@ function parseWeather(json) {
 // ════════════════════════════════════════════════
 //  HELPERS (lifted verbatim from v10)
 // ════════════════════════════════════════════════
+// Fuzzy-matchnings-helpers för AI tool dispatcher
+function findByName(items, query, getName, requireActive) {
+  if (!query) return null
+  const q = query.toLowerCase().trim()
+  const pool = requireActive ? items.filter(i => !i.archived && !i.done) : items
+  let m = pool.find(i => getName(i).toLowerCase() === q)
+  if (m) return m
+  m = pool.find(i => getName(i).toLowerCase().includes(q))
+  if (m) return m
+  return pool.find(i => q.includes(getName(i).toLowerCase()))
+}
+
 function fmtTime(iso) { if (!iso) return ""; const d = new Date(iso); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0") }
 function fmtDate(date) { return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0") }
 function genCode() { const c = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; let r = ""; for (let i = 0; i < 6; i++) r += c[Math.floor(Math.random() * c.length)]; return r }
@@ -261,7 +273,7 @@ function getPersonForEvent(ev, persons) {
   const idx = persons.findIndex(p => p.user_id === ev.created_by)
   return idx >= 0 ? persons[idx] : persons[0]
 }
-function CalendarWidget({ events, persons, fill, compact, onDayClick }) {
+function CalendarWidget({ events, persons, fill, compact, large, onDayClick }) {
   const today = new Date()
   const [vm, setVm] = useState(today.getMonth())
   const [vy, setVy] = useState(today.getFullYear())
@@ -310,14 +322,14 @@ function CalendarWidget({ events, persons, fill, compact, onDayClick }) {
             <button onClick={() => { if (vm === 11) { setVm(0); setVy(y => y + 1) } else setVm(m => m + 1) }} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, color: t.textMuted }}><ChevronRight size={14} /></button>
           </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, marginBottom: 3 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, marginBottom: 4 }}>
           {DAYS_SHORT.map(d => (
-            <div key={d} style={{ textAlign: "center", fontFamily: "Nunito, sans-serif", fontSize: 10, fontWeight: 700, color: t.textMuted, textTransform: "uppercase" }}>{d}</div>
+            <div key={d} style={{ textAlign: "center", fontFamily: "Nunito, sans-serif", fontSize: large ? 12 : compact ? 10 : 11, fontWeight: 700, color: t.textMuted, textTransform: "uppercase" }}>{d}</div>
           ))}
         </div>
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 1 }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: large ? 3 : 1 }}>
           {weeks.map((wk, wi) => (
-            <div key={wi} style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, flex: 1 }}>
+            <div key={wi} style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, flex: 1, minHeight: large ? 56 : undefined }}>
               {wk.map((day, di) => {
                 const isToday = day === today.getDate() && isCurrentMonth
                 const dayEvents = day ? (eventsForView[day] || []) : []
@@ -327,7 +339,7 @@ function CalendarWidget({ events, persons, fill, compact, onDayClick }) {
                     onClick={clickable ? () => onDayClick(new Date(vy, vm, day)) : undefined}
                     style={{
                       display: "flex", flexDirection: "column", alignItems: "stretch",
-                      borderRadius: 6, padding: "2px 2px 1px",
+                      borderRadius: 6, padding: large ? "4px 3px" : "2px 2px 1px",
                       background: isToday ? `${ACCENT.calendar}08` : "transparent",
                       border: isToday ? `1.5px solid ${ACCENT.calendar}30` : "1.5px solid transparent",
                       minHeight: 0, overflow: "hidden",
@@ -338,24 +350,28 @@ function CalendarWidget({ events, persons, fill, compact, onDayClick }) {
                     onMouseLeave={clickable ? e => { if (!isToday) e.currentTarget.style.background = "transparent" } : undefined}
                   >
                     <div style={{
-                      fontFamily: "Comfortaa, sans-serif", fontSize: compact ? 10 : 11, fontWeight: isToday ? 800 : 500,
+                      fontFamily: "Comfortaa, sans-serif",
+                      fontSize: large ? 14 : compact ? 10 : 11,
+                      fontWeight: isToday ? 800 : 500,
                       color: !day ? "transparent" : isToday ? ACCENT.calendar : t.text,
-                      textAlign: "center", lineHeight: 1, marginBottom: 1,
+                      textAlign: "center", lineHeight: 1, marginBottom: large ? 3 : 1,
                     }}>{day || ""}</div>
-                    {dayEvents.slice(0, fill ? 2 : 1).map((ev) => (
+                    {dayEvents.slice(0, large ? 3 : fill ? 2 : 1).map((ev) => (
                       <div key={ev.id} style={{
-                        fontSize: compact ? 6 : 7, fontFamily: "Nunito, sans-serif", fontWeight: 700,
+                        fontSize: large ? 9 : compact ? 6 : 7,
+                        fontFamily: "Nunito, sans-serif", fontWeight: 700,
                         color: ev.color, background: `${ev.color}12`,
-                        borderRadius: 3, padding: "0px 2px", lineHeight: 1.3,
+                        borderRadius: 3, padding: large ? "1px 4px" : "0px 2px",
+                        lineHeight: 1.3,
                         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 1,
                         display: "flex", alignItems: "center", gap: 2,
                       }}>
-                        {ev.recurring && <Repeat size={compact ? 5 : 6} style={{ flexShrink: 0 }} />}
+                        {ev.recurring && <Repeat size={large ? 8 : compact ? 5 : 6} style={{ flexShrink: 0 }} />}
                         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.time} {ev.title}</span>
                       </div>
                     ))}
-                    {dayEvents.length > (fill ? 2 : 1) && (
-                      <div style={{ fontSize: 6, color: t.textMuted, textAlign: "center" }}>+{dayEvents.length - (fill ? 2 : 1)}</div>
+                    {dayEvents.length > (large ? 3 : fill ? 2 : 1) && (
+                      <div style={{ fontSize: large ? 9 : 6, color: t.textMuted, textAlign: "center" }}>+{dayEvents.length - (large ? 3 : fill ? 2 : 1)}</div>
                     )}
                   </div>
                 )
@@ -1183,6 +1199,77 @@ function ProfileSection({ onBack, session }) {
   )
 }
 
+function InviteShareBox({ inviteCode, householdName, onReset, onCopy, copied }) {
+  // Konstruera en delningslänk som inkluderar koden — appen kan läsa ?invite= vid signup
+  const baseUrl = (typeof window !== "undefined" && window.location.origin) || "https://smarthub-sigma.vercel.app"
+  const inviteUrl = `${baseUrl}/?invite=${inviteCode}`
+  const messageBody = `Hej! Jag har bjudit in dig till hushållet "${householdName || "vårt hushåll"}" i SmartHub.\n\nÖppna länken och registrera dig:\n${inviteUrl}\n\nEller använd inbjudningskoden manuellt: ${inviteCode}`
+
+  function shareViaEmail() {
+    const subject = encodeURIComponent(`Inbjudan till SmartHub${householdName ? ` — ${householdName}` : ""}`)
+    const body = encodeURIComponent(messageBody)
+    window.location.href = `mailto:?subject=${subject}&body=${body}`
+  }
+  function shareViaSms() {
+    const body = encodeURIComponent(messageBody)
+    window.location.href = `sms:?&body=${body}`
+  }
+  async function shareNative() {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `Inbjudan till SmartHub`,
+          text: messageBody,
+          url: inviteUrl,
+        })
+      } catch {} // användaren avbröt
+    } else {
+      await navigator.clipboard.writeText(messageBody)
+    }
+  }
+  function copyLink() {
+    navigator.clipboard.writeText(inviteUrl)
+  }
+  const hasNativeShare = typeof navigator !== "undefined" && !!navigator.share
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "16px 12px", background: `${ACCENT.calendar}06`, border: `1px solid ${ACCENT.calendar}15`, borderRadius: 12 }}>
+        <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, fontWeight: 700, color: t.textSec, textTransform: "uppercase", letterSpacing: "0.08em" }}>Inbjudningskod</span>
+        <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 32, fontWeight: 700, color: ACCENT.calendar, letterSpacing: "0.15em" }}>
+          {inviteCode}
+        </div>
+        <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textMuted, textAlign: "center" }}>
+          Giltig tills den används · Eller använd länken nedan
+        </span>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, padding: "8px 12px", background: t.inputBg, border: `1px solid ${t.inputBorder}`, borderRadius: 10, alignItems: "center" }}>
+        <span style={{ flex: 1, fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textSec, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {inviteUrl}
+        </span>
+        <Btn small outline onClick={copyLink}><Copy size={12} /> Kopiera länk</Btn>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <Btn small color={ACCENT.calendar} onClick={shareViaEmail}>📧 Mejla</Btn>
+        <Btn small outline color={ACCENT.calendar} onClick={shareViaSms}>💬 SMS</Btn>
+        {hasNativeShare && (
+          <Btn small outline color={ACCENT.calendar} onClick={shareNative}>📤 Dela</Btn>
+        )}
+        <Btn small outline onClick={onCopy}><Copy size={12} /> {copied ? "Kod kopierad!" : "Bara koden"}</Btn>
+        <button onClick={onReset} style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, background: "none", border: "none", cursor: "pointer", color: t.textMuted, padding: "4px 8px" }}>
+          Skapa ny kod
+        </button>
+      </div>
+
+      <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textMuted, lineHeight: 1.5, padding: "8px 0", borderTop: `1px solid ${t.line}` }}>
+        <strong style={{ color: t.textSec }}>Hur det funkar:</strong> Personen klickar på länken (eller går till appen och anger koden manuellt). Hen registrerar sig med sin egen mejl, sen kopplas hen automatiskt till hushållet.
+      </div>
+    </div>
+  )
+}
+
 function HouseholdSection({ onBack, household, members, userId, onCreateInvite }) {
   const [inviteCode, setInviteCode] = useState(null)
   const [creating, setCreating] = useState(false)
@@ -1214,15 +1301,22 @@ function HouseholdSection({ onBack, household, members, userId, onCreateInvite }
 
       <Card style={{ marginBottom: 12 }}>
         <div style={{ padding: 16 }}>
-          <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, fontWeight: 700, color: t.textSec, marginBottom: 6 }}>Invite-kod</div>
+          <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, fontWeight: 700, color: t.textSec, marginBottom: 6 }}>Bjud in till hushållet</div>
           {!inviteCode ? (
-            <Btn onClick={create} disabled={creating}>{creating ? "Skapar..." : "Skapa kod"}</Btn>
+            <>
+              <p style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, color: t.textMuted, margin: "0 0 12px" }}>
+                Skapa en kod som personen anger när hen registrerar sig. Eller skicka inbjudan via mejl/SMS.
+              </p>
+              <Btn onClick={create} disabled={creating}>{creating ? "Skapar..." : "Skapa inbjudningskod"}</Btn>
+            </>
           ) : (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 20, fontWeight: 700, color: ACCENT.calendar, letterSpacing: "0.1em", background: `${ACCENT.calendar}08`, padding: "8px 16px", borderRadius: 10 }}>{inviteCode}</div>
-              <Btn small outline onClick={copy}><Copy size={12} /> {copied ? "Kopierad!" : "Kopiera"}</Btn>
-              <button onClick={() => setInviteCode(null)} style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, background: "none", border: "none", cursor: "pointer", color: t.textMuted }}>Skapa ny</button>
-            </div>
+            <InviteShareBox
+              inviteCode={inviteCode}
+              householdName={household?.name}
+              onReset={() => setInviteCode(null)}
+              onCopy={copy}
+              copied={copied}
+            />
           )}
         </div>
       </Card>
@@ -1502,17 +1596,15 @@ function SettingsTab({ isMobile, session, household, members, foodPrefs, setFood
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {sections.map(s => (
           <Card key={s.id}>
-            <div onClick={() => setActiveSection(s.id)} style={{ padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: `${ACCENT.calendar}08`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <s.icon size={18} color={ACCENT.calendar} />
-                </div>
-                <div>
-                  <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 14, fontWeight: 700, color: t.text }}>{s.label}</div>
-                  <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textSec }}>{s.desc}</div>
-                </div>
+            <div onClick={() => setActiveSection(s.id)} style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: `${ACCENT.calendar}08`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <s.icon size={18} color={ACCENT.calendar} />
               </div>
-              <ChevronRight size={18} color={t.textMuted} />
+              <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 14, fontWeight: 700, color: t.text }}>{s.label}</div>
+                <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textSec }}>{s.desc}</div>
+              </div>
+              <ChevronRight size={18} color={t.textMuted} style={{ flexShrink: 0 }} />
             </div>
           </Card>
         ))}
@@ -1524,10 +1616,10 @@ function SettingsTab({ isMobile, session, household, members, foodPrefs, setFood
 // ════════════════════════════════════════════════
 //  AI CHAT
 // ════════════════════════════════════════════════
-function AiChat({ position = "fixed", onSend }) {
+function AiChat({ position = "fixed", callAi, executeTool }) {
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState([
-    { role: "ai", text: "Hej! Jag kan hjälpa dig med listor, kalender, matsedel m.m. Prova: \"Lägg till mjölk på handlingslistan\" eller \"Vad äter vi på fredag?\"" },
+    { role: "ai", text: "Hej! Jag kan göra grejer i appen åt dig. Prova:\n• \"Lägg till mjölk på handlingslistan\"\n• \"Boka tandläkare imorgon kl 10\"\n• \"Bocka av äggen\"\n• \"Generera ny veckomeny\"\n• \"Vad äter vi på fredag?\"" },
   ])
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
@@ -1543,8 +1635,48 @@ function AiChat({ position = "fixed", onSend }) {
     setInput("")
     setLoading(true)
     try {
-      const reply = await onSend(text)
-      setMessages(p => [...p, { role: "ai", text: reply }])
+      // Steg 1: skicka till AI
+      const data = await callAi(text, null)
+      const { reply, tool_calls, assistant_message } = data || {}
+
+      // Visa AI:s eventuella text-svar
+      if (reply) {
+        setMessages(p => [...p, { role: "ai", text: reply }])
+      }
+
+      // Exekvera tool calls om några finns
+      if (tool_calls && tool_calls.length > 0) {
+        const toolResults = []
+        for (const tc of tool_calls) {
+          const result = await executeTool(tc.name, tc.arguments)
+          toolResults.push({ tool_call_id: tc.id, ...result })
+          // Lägg till resultatet som en chat-rad
+          setMessages(p => [...p, {
+            role: "tool",
+            text: (result.ok ? "✓ " : "✗ ") + result.message,
+            ok: result.ok,
+          }])
+        }
+
+        // Steg 2: Skicka tillbaka resultaten så AI:n kan ge en naturlig sammanfattning
+        const previous = [
+          { role: "user", content: text },
+          assistant_message,
+          ...toolResults.map(r => ({
+            role: "tool",
+            tool_call_id: r.tool_call_id,
+            content: r.ok ? r.message : ("Misslyckades: " + r.message),
+          })),
+        ]
+        try {
+          const followup = await callAi("", previous)
+          if (followup?.reply) {
+            setMessages(p => [...p, { role: "ai", text: followup.reply }])
+          }
+        } catch {} // tyst-fail på follow-up
+      } else if (!reply) {
+        setMessages(p => [...p, { role: "ai", text: "(tomt svar)" }])
+      }
     } catch (e) {
       setMessages(p => [...p, { role: "ai", text: "Något gick fel: " + (e.message || "okänt fel") }])
     } finally {
@@ -1599,18 +1731,32 @@ function AiChat({ position = "fixed", onSend }) {
         </button>
       </div>
       <div style={{ flex: 1, overflow: "auto", padding: 10, display: "flex", flexDirection: "column", gap: 8, maxHeight: 280 }}>
-        {messages.map((msg, i) => (
-          <div key={i} style={{
-            alignSelf: msg.role === "user" ? "flex-end" : "flex-start",
-            maxWidth: "85%", padding: "8px 12px", borderRadius: 12,
-            background: msg.role === "user" ? ACCENT.calendar : t.inputBg,
-            color: msg.role === "user" ? "#fff" : t.text,
-            fontFamily: "Nunito, sans-serif", fontSize: 12, fontWeight: 500, lineHeight: 1.4,
-            borderBottomRightRadius: msg.role === "user" ? 4 : 12,
-            borderBottomLeftRadius: msg.role === "ai" ? 4 : 12,
-            whiteSpace: "pre-wrap",
-          }}>{msg.text}</div>
-        ))}
+        {messages.map((msg, i) => {
+          if (msg.role === "tool") {
+            return (
+              <div key={i} style={{
+                alignSelf: "center",
+                padding: "4px 10px", borderRadius: 8,
+                background: msg.ok ? `${ACCENT.todo}10` : "#dc262610",
+                color: msg.ok ? ACCENT.todo : "#dc2626",
+                fontFamily: "Nunito, sans-serif", fontSize: 11, fontWeight: 600,
+                border: msg.ok ? `1px solid ${ACCENT.todo}25` : "1px solid #dc262625",
+              }}>{msg.text}</div>
+            )
+          }
+          return (
+            <div key={i} style={{
+              alignSelf: msg.role === "user" ? "flex-end" : "flex-start",
+              maxWidth: "85%", padding: "8px 12px", borderRadius: 12,
+              background: msg.role === "user" ? ACCENT.calendar : t.inputBg,
+              color: msg.role === "user" ? "#fff" : t.text,
+              fontFamily: "Nunito, sans-serif", fontSize: 12, fontWeight: 500, lineHeight: 1.4,
+              borderBottomRightRadius: msg.role === "user" ? 4 : 12,
+              borderBottomLeftRadius: msg.role === "ai" ? 4 : 12,
+              whiteSpace: "pre-wrap",
+            }}>{msg.text}</div>
+          )
+        })}
         {loading && (
           <div style={{ alignSelf: "flex-start", padding: "8px 12px", borderRadius: 12, background: t.inputBg, fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textMuted }}>
             <span style={{ display: "inline-block", animation: "pulse 1s infinite" }}>•••</span>
@@ -1677,6 +1823,7 @@ function TabContent({
             events={calEvents}
             persons={persons}
             onDayClick={d => onOpenAddEvent(d)}
+            large={isMobile}
           />
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
             <TodoCard pinnedList={pinnedList} onToggle={onToggleItem} />
@@ -2399,25 +2546,6 @@ export default function SmartHub({ session, household }) {
   }
 
   // ── AI handlers ──
-  async function handleAiChat(message) {
-    const ctx = {
-      lists: listsWithItems.map(l => ({
-        name: l.name, shared: l.shared,
-        items: l.items.map(it => ({ text: it.text, done: it.done })),
-      })),
-      events: calEvents.slice(0, 50).map(e => ({
-        title: e.title, start_time: e.start_time, location: e.location,
-      })),
-      meals: meals.map(m => ({ weekday: m.weekday, meal_text: m.meal_text })),
-      foodPrefs,
-    }
-    const { data, error } = await supabase.functions.invoke("ai-chat", {
-      body: { message, context: ctx },
-    })
-    if (error) throw new Error(error.message || "AI-anrop misslyckades")
-    return data?.reply || "(tomt svar)"
-  }
-
   async function handleAiGenerateMeals(prefs) {
     const { data, error } = await supabase.functions.invoke("ai-meal-gen", {
       body: { prefs, week_start: currentWeekStart },
@@ -2429,6 +2557,115 @@ export default function SmartHub({ session, household }) {
         await handleSetMealText(m.weekday, m.meal_text)
       }
     }
+  }
+
+  // AI Tool dispatcher — mappar verktygsanrop till handlers
+  async function executeAiTool(name, args) {
+    try {
+      if (name === "add_todo") {
+        const list = findByName(lists, args.list_name, l => l.name, true) || lists.find(l => !l.archived)
+        if (!list) return { ok: false, message: "Inga aktiva listor finns. Skapa en först." }
+        await handleAddTodo(args.text, list.id)
+        return { ok: true, message: `Lagt till "${args.text}" på ${list.name}` }
+      }
+      if (name === "complete_todo") {
+        const list = args.list_name ? findByName(lists, args.list_name, l => l.name, true) : null
+        const candidates = list ? todos.filter(td => td.list_id === list.id) : todos
+        const td = findByName(candidates, args.text, t => t.text, true)
+        if (!td) return { ok: false, message: `Hittade ingen aktiv uppgift som matchar "${args.text}"` }
+        await handleToggleTodo(td)
+        return { ok: true, message: `Bockade av "${td.text}"` }
+      }
+      if (name === "delete_todo") {
+        const td = findByName(todos, args.text, t => t.text)
+        if (!td) return { ok: false, message: `Hittade ingen uppgift "${args.text}"` }
+        await handleDeleteTodo(td)
+        return { ok: true, message: `Tog bort "${td.text}"` }
+      }
+      if (name === "add_list") {
+        await handleAddList({
+          name: args.name,
+          color: args.color || "#7c3aed",
+          shared: args.shared !== false,
+          expires_at: null,
+        })
+        return { ok: true, message: `Skapade listan "${args.name}"` }
+      }
+      if (name === "archive_list") {
+        const list = findByName(lists, args.list_name, l => l.name, true)
+        if (!list) return { ok: false, message: `Hittade ingen lista "${args.list_name}"` }
+        await handleArchiveList(list.id)
+        return { ok: true, message: `Arkiverade "${list.name}"` }
+      }
+      if (name === "add_event") {
+        await handleAddEvent({
+          title: args.title,
+          start_time: args.start_time,
+          end_time: args.end_time,
+          location: args.location || null,
+          color: persons[0]?.color || ACCENT.event,
+          shared: true,
+          recurrence_rule: args.recurrence
+            ? (args.recurrence_until ? { freq: args.recurrence, until: args.recurrence_until } : { freq: args.recurrence })
+            : null,
+        })
+        return { ok: true, message: `Lade till "${args.title}"${args.recurrence ? " (återkommande)" : ""} ${new Date(args.start_time).toLocaleDateString("sv-SE", { weekday: "long", day: "numeric", month: "long" })} ${fmtTime(args.start_time)}` }
+      }
+      if (name === "delete_event") {
+        const ev = findByName(calEvents, args.title, e => e.title)
+        if (!ev) return { ok: false, message: `Hittade ingen händelse "${args.title}"` }
+        await handleDeleteEvent(ev.id)
+        return { ok: true, message: `Tog bort "${ev.title}"` }
+      }
+      if (name === "set_meal") {
+        const wd = parseInt(args.weekday)
+        if (wd < 1 || wd > 7) return { ok: false, message: "Ogiltig veckodag" }
+        await handleSetMealText(wd, args.meal_text || "")
+        return { ok: true, message: args.meal_text ? `${DAYS[wd - 1]}: ${args.meal_text}` : `Rensade ${DAYS[wd - 1]}` }
+      }
+      if (name === "set_meal_tag") {
+        const wd = parseInt(args.weekday)
+        if (wd < 1 || wd > 7) return { ok: false, message: "Ogiltig veckodag" }
+        await handleSetMealTag(wd, args.tag || null)
+        return { ok: true, message: `Satte tag på ${DAYS[wd - 1]}` }
+      }
+      if (name === "generate_week_menu") {
+        await handleAiGenerateMeals(foodPrefs)
+        return { ok: true, message: "Genererade ny veckomatsedel" }
+      }
+      if (name === "pin_list") {
+        const list = findByName(lists, args.list_name, l => l.name, true)
+        if (!list) return { ok: false, message: `Hittade ingen lista "${args.list_name}"` }
+        if (!list.pinned) await handleTogglePin(list.id)
+        return { ok: true, message: `"${list.name}" visas nu på Hem` }
+      }
+      return { ok: false, message: `Okänt verktyg: ${name}` }
+    } catch (e) {
+      return { ok: false, message: "Fel: " + (e.message || String(e)) }
+    }
+  }
+
+  // Skickar message till ai-chat-edge function. Returnerar { reply, tool_calls, assistant_message }.
+  async function callAiChat(message, previous) {
+    const ctx = {
+      lists: listsWithItems.map(l => ({
+        name: l.name, shared: l.shared, pinned: l.pinned,
+        items: l.items.map(it => ({ text: it.text, done: it.done })),
+      })),
+      events: calEvents.slice(0, 30).map(e => ({
+        title: e.title, start_time: e.start_time, location: e.location,
+        recurrence_rule: e.recurrence_rule,
+      })),
+      meals: meals.map(m => ({ weekday: m.weekday, meal_text: m.meal_text, tag: m.tag })),
+      foodPrefs,
+      persons: persons.map(p => ({ name: p.name, color: p.color })),
+    }
+    const today = new Date().toISOString().slice(0, 10)
+    const { data, error } = await supabase.functions.invoke("ai-chat", {
+      body: { message, context: ctx, today, previous },
+    })
+    if (error) throw new Error(error.message || "AI-anrop misslyckades")
+    return data
   }
 
   // ── Render ──
@@ -2520,7 +2757,7 @@ export default function SmartHub({ session, household }) {
             <TabContent {...tabContentProps} />
           </div>
           <MobileNav tab={tab} setTab={setTab} />
-          <AiChat position="mobile" onSend={handleAiChat} />
+          <AiChat position="mobile" callAi={callAiChat} executeTool={executeAiTool} />
         </div>
         {lifedAddEventModal}
       </>
@@ -2535,7 +2772,7 @@ export default function SmartHub({ session, household }) {
         <DesktopSidebar tab={tab} setTab={setTab} session={session} weather={weather} household={household} />
         <div style={{ flex: 1, overflow: "auto", minWidth: 0, position: "relative" }}>
           <TabContent {...tabContentProps} />
-          <AiChat position="desktop" onSend={handleAiChat} />
+          <AiChat position="desktop" callAi={callAiChat} executeTool={executeAiTool} />
         </div>
       </div>
       {lifedAddEventModal}
