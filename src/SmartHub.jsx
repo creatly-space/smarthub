@@ -79,6 +79,87 @@ function parseWeather(json) {
 // ════════════════════════════════════════════════
 //  HELPERS (lifted verbatim from v10)
 // ════════════════════════════════════════════════
+// ── Svenska helgdagar och bemärkelsedagar ──
+// Beräknar påskdagen (Gauss algoritm) → används för rörliga helgdagar
+function easterSunday(year) {
+  const a = year % 19
+  const b = Math.floor(year / 100)
+  const c = year % 100
+  const d = Math.floor(b / 4)
+  const e = b % 4
+  const f = Math.floor((b + 8) / 25)
+  const g = Math.floor((b - f + 1) / 3)
+  const h = (19 * a + b - d - g + 15) % 30
+  const i = Math.floor(c / 4)
+  const k = c % 4
+  const l = (32 + 2 * e + 2 * i - h - k) % 7
+  const m = Math.floor((a + 11 * h + 22 * l) / 451)
+  const month = Math.floor((h + l - 7 * m + 114) / 31)
+  const day = ((h + l - 7 * m + 114) % 31) + 1
+  return new Date(year, month - 1, day)
+}
+function addDays(d, n) { return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n) }
+// Hitta första lör/sön i månad (för t.ex. mors- och farsdag som infaller på söndag)
+function nthWeekdayOfMonth(year, month, weekday, n) {
+  const d = new Date(year, month, 1)
+  const offset = (weekday - d.getDay() + 7) % 7
+  return new Date(year, month, 1 + offset + (n - 1) * 7)
+}
+function lastWeekdayOfMonth(year, month, weekday) {
+  const d = new Date(year, month + 1, 0) // sista dagen i månaden
+  const offset = (d.getDay() - weekday + 7) % 7
+  return new Date(year, month, d.getDate() - offset)
+}
+// Cache för helgdagar per år (beräkning är inte gratis)
+const _holidayCache = {}
+function getSwedishHolidays(year) {
+  if (_holidayCache[year]) return _holidayCache[year]
+  const easter = easterSunday(year)
+  const result = [
+    { date: new Date(year, 0, 1),  name: "Nyårsdagen",         color: "#dc2626", redday: true },
+    { date: new Date(year, 0, 6),  name: "Trettondedag jul",   color: "#dc2626", redday: true },
+    { date: addDays(easter, -3),   name: "Skärtorsdag",        color: "#7c3aed" },
+    { date: addDays(easter, -2),   name: "Långfredagen",       color: "#dc2626", redday: true },
+    { date: easter,                name: "Påskdagen",          color: "#dc2626", redday: true },
+    { date: addDays(easter, 1),    name: "Annandag påsk",      color: "#dc2626", redday: true },
+    { date: new Date(year, 3, 30), name: "Valborgsmässoafton", color: "#d97706" },
+    { date: new Date(year, 4, 1),  name: "Första maj",         color: "#dc2626", redday: true },
+    { date: addDays(easter, 39),   name: "Kristi himmelsfärd", color: "#dc2626", redday: true },
+    { date: nthWeekdayOfMonth(year, 4, 0, -1), name: "Mors dag", color: "#db2777" }, // sista söndagen i maj
+    { date: addDays(easter, 49),   name: "Pingstdagen",        color: "#dc2626", redday: true },
+    { date: new Date(year, 5, 6),  name: "Sveriges nationaldag", color: "#dc2626", redday: true },
+    // Midsommarafton: fredag mellan 19-25 juni
+    { date: nthWeekdayOfMonth(year, 5, 5, 4),  name: "Midsommarafton", color: "#d97706" },
+    // Midsommardagen: lördag mellan 20-26 juni
+    { date: nthWeekdayOfMonth(year, 5, 6, 4),  name: "Midsommardagen", color: "#dc2626", redday: true },
+    { date: nthWeekdayOfMonth(year, 10, 0, 2), name: "Fars dag",       color: "#0ea5e9" }, // 2:a söndagen i november
+    // Alla helgons dag: lördag mellan 31 okt - 6 nov
+    { date: nthWeekdayOfMonth(year, 9, 6, 5).getMonth() === 9 ? nthWeekdayOfMonth(year, 9, 6, 5) : nthWeekdayOfMonth(year, 10, 6, 1), name: "Alla helgons dag", color: "#dc2626", redday: true },
+    { date: new Date(year, 11, 24), name: "Julafton",      color: "#dc2626", redday: true },
+    { date: new Date(year, 11, 25), name: "Juldagen",      color: "#dc2626", redday: true },
+    { date: new Date(year, 11, 26), name: "Annandag jul",  color: "#dc2626", redday: true },
+    { date: new Date(year, 11, 31), name: "Nyårsafton",    color: "#d97706" },
+  ]
+  // Adventsöndagar (4 söndagar före juldagen)
+  const christmas = new Date(year, 11, 25)
+  let lastSunday = christmas.getDay() === 0 ? addDays(christmas, -7) : addDays(christmas, -christmas.getDay())
+  result.push({ date: addDays(lastSunday, -21), name: "1:a advent", color: "#7c3aed" })
+  result.push({ date: addDays(lastSunday, -14), name: "2:a advent", color: "#7c3aed" })
+  result.push({ date: addDays(lastSunday, -7),  name: "3:e advent", color: "#7c3aed" })
+  result.push({ date: lastSunday,               name: "4:e advent", color: "#7c3aed" })
+
+  _holidayCache[year] = result
+  return result
+}
+function getHolidayForDate(date) {
+  const holidays = getSwedishHolidays(date.getFullYear())
+  return holidays.find(h =>
+    h.date.getFullYear() === date.getFullYear() &&
+    h.date.getMonth() === date.getMonth() &&
+    h.date.getDate() === date.getDate()
+  )
+}
+
 // Fuzzy-matchnings-helpers för AI tool dispatcher
 function findByName(items, query, getName, requireActive) {
   if (!query) return null
@@ -339,28 +420,41 @@ function CalendarWidget({ events, persons, fill, compact, large, onDayClick }) {
                 const isToday = day === today.getDate() && isCurrentMonth
                 const dayEvents = day ? (eventsForView[day] || []) : []
                 const clickable = !!(day && onDayClick)
+                const holiday = day ? getHolidayForDate(new Date(vy, vm, day)) : null
+                const isRedDay = !!holiday?.redday
+                const dateColor = !day ? "transparent" : isToday ? ACCENT.calendar : isRedDay ? "#dc2626" : t.text
                 return (
                   <div key={di}
                     onClick={clickable ? () => onDayClick(new Date(vy, vm, day)) : undefined}
+                    title={holiday?.name || ""}
                     style={{
                       display: "flex", flexDirection: "column", alignItems: "stretch",
                       borderRadius: 6, padding: large ? "4px 3px" : "2px 2px 1px",
-                      background: isToday ? `${ACCENT.calendar}08` : "transparent",
+                      background: isToday ? `${ACCENT.calendar}08` : isRedDay ? "#dc262608" : "transparent",
                       border: isToday ? `1.5px solid ${ACCENT.calendar}30` : "1.5px solid transparent",
                       minHeight: 0, overflow: "hidden",
                       cursor: clickable ? "pointer" : "default",
                       transition: "background 0.15s",
                     }}
                     onMouseEnter={clickable ? e => { if (!isToday) e.currentTarget.style.background = `${ACCENT.calendar}06` } : undefined}
-                    onMouseLeave={clickable ? e => { if (!isToday) e.currentTarget.style.background = "transparent" } : undefined}
+                    onMouseLeave={clickable ? e => { if (!isToday) e.currentTarget.style.background = isRedDay ? "#dc262608" : "transparent" } : undefined}
                   >
                     <div style={{
                       fontFamily: "Comfortaa, sans-serif",
                       fontSize: large ? 14 : compact ? 10 : 11,
-                      fontWeight: isToday ? 800 : 500,
-                      color: !day ? "transparent" : isToday ? ACCENT.calendar : t.text,
+                      fontWeight: isToday ? 800 : isRedDay ? 700 : 500,
+                      color: dateColor,
                       textAlign: "center", lineHeight: 1, marginBottom: large ? 3 : 1,
                     }}>{day || ""}</div>
+                    {holiday && large && (
+                      <div style={{
+                        fontSize: 9, fontFamily: "Nunito, sans-serif", fontWeight: 700,
+                        color: holiday.color, background: `${holiday.color}12`,
+                        borderRadius: 3, padding: "1px 4px", lineHeight: 1.2,
+                        textAlign: "center", marginBottom: 2,
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      }}>{holiday.name}</div>
+                    )}
                     {dayEvents.slice(0, large ? 2 : fill ? 2 : 1).map((ev) => (
                       <div key={ev.id} style={{
                         fontSize: large ? 11 : compact ? 6 : 7,
@@ -603,6 +697,68 @@ function AddEventModal({ open, prefillDate, editEvent, persons, onClose, onSave,
   )
 }
 
+// Visar senaste aktivitet i hushållet (vem gjorde vad)
+function ActivityFeed({ activity, persons, members, userId, max = 5 }) {
+  const items = activity.slice(0, max)
+  if (items.length === 0) return null
+
+  function relativeTime(iso) {
+    const diff = (new Date() - new Date(iso)) / 1000
+    if (diff < 60) return "just nu"
+    if (diff < 3600) return `${Math.floor(diff / 60)}m sen`
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h sen`
+    if (diff < 604800) return `${Math.floor(diff / 86400)}d sen`
+    return new Date(iso).toLocaleDateString("sv-SE", { day: "numeric", month: "short" })
+  }
+  function getName(itemUserId) {
+    if (itemUserId === userId) return "Du"
+    const memberIdx = members.findIndex(m => m.user_id === itemUserId)
+    return memberIdx >= 0 ? (persons[memberIdx]?.name || "Medlem " + (memberIdx + 1)) : "Någon"
+  }
+  function getColor(itemUserId) {
+    if (itemUserId === userId) return ACCENT.calendar
+    const memberIdx = members.findIndex(m => m.user_id === itemUserId)
+    return memberIdx >= 0 ? (persons[memberIdx]?.color || PERSON_PALETTE[0]) : t.textMuted
+  }
+
+  return (
+    <Card>
+      <div style={{ padding: "14px 16px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <Label color={t.textSec} icon={Users}>Senaste aktivitet</Label>
+          <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textMuted }}>{activity.length}</span>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {items.map(a => {
+            const name = getName(a.user_id)
+            const color = getColor(a.user_id)
+            return (
+              <div key={a.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "6px 0" }}>
+                <div style={{
+                  width: 28, height: 28, borderRadius: 14,
+                  background: `${color}15`,
+                  display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                }}>
+                  <span style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 12, fontWeight: 700, color }}>{name[0]}</span>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, color: t.text, lineHeight: 1.4 }}>
+                    <strong style={{ color, fontWeight: 700 }}>{name}</strong>{" "}
+                    <span style={{ color: t.textSec }}>{a.description}</span>
+                  </div>
+                  <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textMuted, marginTop: 2 }}>
+                    {relativeTime(a.created_at)}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </Card>
+  )
+}
+
 // Modal som visar alla händelser för en specifik dag, med möjlighet att lägga till ny.
 function DayModal({ open, date, events, persons, onClose, onAddEvent, onEditEvent, onDeleteEvent }) {
   if (!open || !date) return null
@@ -697,27 +853,172 @@ function DayModal({ open, date, events, persons, onClose, onAddEvent, onEditEven
   )
 }
 
+// Vecko-vy: 7 dagar i rad med events listade per dag
+function WeekCalendarView({ events, persons, onDayClick }) {
+  const [weekOffset, setWeekOffset] = useState(0) // 0 = denna vecka, +1 = nästa, -1 = förra
+  const today = new Date()
+  // Måndag denna vecka
+  const dayOfWeek = today.getDay() === 0 ? 7 : today.getDay()
+  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - dayOfWeek + 1 + weekOffset * 7)
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i)
+    return d
+  })
+  const weekStart = days[0]
+  const weekEnd = new Date(days[6].getFullYear(), days[6].getMonth(), days[6].getDate(), 23, 59, 59)
+  const expandedEvents = useMemo(
+    () => expandEvents(events, weekStart, weekEnd).sort((a, b) => new Date(a.start_time) - new Date(b.start_time)),
+    [events, weekStart.getTime(), weekEnd.getTime()]
+  )
+  const eventsByDay = useMemo(() => {
+    const map = {}
+    expandedEvents.forEach(ev => {
+      const d = new Date(ev.start_time)
+      const key = fmtDate(d)
+      if (!map[key]) map[key] = []
+      map[key].push(ev)
+    })
+    return map
+  }, [expandedEvents])
+
+  const weekNum = (() => {
+    // ISO veckonummer
+    const d = new Date(Date.UTC(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate()))
+    const dayNum = d.getUTCDay() || 7
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum)
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+    return Math.ceil((((d - yearStart) / 86400000) + 1) / 7)
+  })()
+
+  const isCurrentWeek = weekOffset === 0
+
+  return (
+    <Card accent={ACCENT.calendar}>
+      <div style={{ padding: "14px 16px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <Label color={ACCENT.calendar} icon={CalendarDays}>Vecka {weekNum}</Label>
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <button onClick={() => setWeekOffset(o => o - 1)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: t.textMuted }}>
+              <ChevronLeft size={16} />
+            </button>
+            {!isCurrentWeek && (
+              <button onClick={() => setWeekOffset(0)} style={{
+                background: t.inputBg, border: `1px solid ${t.inputBorder}`, borderRadius: 6,
+                padding: "2px 8px", cursor: "pointer", fontFamily: "Nunito, sans-serif",
+                fontSize: 11, fontWeight: 700, color: t.textSec,
+              }}>Idag</button>
+            )}
+            <button onClick={() => setWeekOffset(o => o + 1)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: t.textMuted }}>
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {days.map((d, i) => {
+            const isToday = d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate()
+            const dayEvents = eventsByDay[fmtDate(d)] || []
+            const holiday = getHolidayForDate(d)
+            return (
+              <div key={i}
+                onClick={() => onDayClick && onDayClick(d)}
+                style={{
+                  display: "flex", gap: 12, padding: "10px 12px",
+                  background: isToday ? `${ACCENT.calendar}08` : "transparent",
+                  border: isToday ? `1.5px solid ${ACCENT.calendar}30` : `1px solid ${t.line}`,
+                  borderRadius: 10, cursor: "pointer",
+                  transition: "background 0.15s",
+                }}
+                onMouseEnter={e => { if (!isToday) e.currentTarget.style.background = `${ACCENT.calendar}05` }}
+                onMouseLeave={e => { if (!isToday) e.currentTarget.style.background = "transparent" }}
+              >
+                <div style={{ width: 50, flexShrink: 0, textAlign: "center" }}>
+                  <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, fontWeight: 700, color: t.textMuted, textTransform: "uppercase" }}>{DAYS_SHORT[i]}</div>
+                  <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 22, fontWeight: 700, color: holiday?.redday ? "#dc2626" : isToday ? ACCENT.calendar : t.text, lineHeight: 1, marginTop: 2 }}>
+                    {d.getDate()}
+                  </div>
+                  <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 9, color: t.textMuted, marginTop: 2 }}>
+                    {MONTHS_SHORT[d.getMonth()]}
+                  </div>
+                </div>
+                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+                  {holiday && (
+                    <div style={{
+                      fontFamily: "Nunito, sans-serif", fontSize: 11, fontWeight: 700,
+                      color: holiday.color, background: `${holiday.color}12`,
+                      padding: "3px 8px", borderRadius: 6, alignSelf: "flex-start",
+                    }}>{holiday.name}</div>
+                  )}
+                  {dayEvents.length === 0 && !holiday && (
+                    <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textMuted, fontStyle: "italic" }}>Inget inplanerat</span>
+                  )}
+                  {dayEvents.map(ev => {
+                    const p = getPersonForEvent(ev, persons)
+                    const isRecurring = !!ev.master_id || !!ev.recurrence_rule
+                    return (
+                      <div key={ev.id} style={{
+                        display: "flex", alignItems: "center", gap: 8,
+                        padding: "5px 10px", borderRadius: 7,
+                        background: `${p.color}08`, border: `1px solid ${p.color}15`,
+                      }}>
+                        <div style={{ width: 3, height: 22, borderRadius: 2, background: p.color, flexShrink: 0 }} />
+                        <span style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 11, color: t.textMuted, flexShrink: 0 }}>{fmtTime(ev.start_time)}</span>
+                        <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, color: t.text, fontWeight: 600, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.title}</span>
+                        {isRecurring && <Repeat size={11} color={t.textMuted} style={{ flexShrink: 0 }} />}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </Card>
+  )
+}
+
 function CalendarTab({ isMobile, events, persons, onAddEvent, onDeleteEvent, onOpenAddEvent, onOpenDayModal, userId }) {
-  const eventsToday = useMemo(() => {
-    const today = new Date()
-    const dayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
-    const dayEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59)
-    const expanded = expandEvents(events, dayStart, dayEnd)
-    return expanded.sort((a, b) => new Date(a.start_time) - new Date(b.start_time))
-  }, [events])
+  const [view, setView] = useState("month") // "month" | "week"
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <h2 style={{ fontFamily: "Comfortaa, sans-serif", fontSize: isMobile ? 22 : 24, fontWeight: 700, color: t.text, margin: 0 }}>Kalender</h2>
         <Btn onClick={() => onOpenAddEvent(new Date())}><Plus size={14} /> Ny händelse</Btn>
       </div>
 
-      <CalendarWidget
-        events={events}
-        persons={persons}
-        onDayClick={d => onOpenDayModal(d)}
-      />
+      {/* View toggle: Månad / Vecka */}
+      <div style={{ display: "flex", gap: 4, padding: 3, background: t.inputBg, border: `1px solid ${t.inputBorder}`, borderRadius: 10, marginBottom: 16, width: "fit-content" }}>
+        {[{ id: "month", label: "Månad" }, { id: "week", label: "Vecka" }].map(opt => {
+          const active = view === opt.id
+          return (
+            <button key={opt.id} onClick={() => setView(opt.id)} style={{
+              padding: "6px 14px", borderRadius: 7, border: "none",
+              background: active ? t.card : "transparent",
+              color: active ? t.text : t.textSec,
+              boxShadow: active ? "0 1px 3px rgba(0,0,0,0.06)" : "none",
+              fontFamily: "Nunito, sans-serif", fontSize: 12, fontWeight: 700,
+              cursor: "pointer", transition: "all 0.15s",
+            }}>{opt.label}</button>
+          )
+        })}
+      </div>
+
+      {view === "month" ? (
+        <CalendarWidget
+          events={events}
+          persons={persons}
+          onDayClick={d => onOpenDayModal(d)}
+          large={isMobile}
+        />
+      ) : (
+        <WeekCalendarView
+          events={events}
+          persons={persons}
+          onDayClick={d => onOpenDayModal(d)}
+        />
+      )}
 
       {eventsToday.length > 0 && (
         <Card style={{ marginTop: 12 }}>
@@ -802,6 +1103,55 @@ function TodoCard({ pinnedList, onToggle, fill, maxHeight }) {
   )
 }
 
+function ListItem({ item, listColor, onToggle, onDelete }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div onClick={onToggle} style={{
+        width: 20, height: 20, borderRadius: 6, cursor: "pointer", flexShrink: 0,
+        border: item.done ? "none" : `2px solid ${t.textMuted}`,
+        background: item.done ? listColor : "transparent",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}>{item.done && <Check size={12} color="#fff" strokeWidth={3} />}</div>
+      <span onClick={onToggle} style={{
+        flex: 1, cursor: "pointer",
+        fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 500,
+        color: item.done ? t.textMuted : t.text,
+        textDecoration: item.done ? "line-through" : "none",
+      }}>{item.text}</span>
+      <button onClick={onDelete} style={{ background: "none", border: "none", cursor: "pointer", color: t.textMuted, padding: 2 }}>
+        <X size={12} />
+      </button>
+    </div>
+  )
+}
+
+function CheckedSection({ doneItems, listColor, onToggle, onDelete }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div style={{ borderTop: `1px solid ${t.line}`, paddingTop: 10, marginTop: 6 }}>
+      <div onClick={() => setOpen(o => !o)} style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        cursor: "pointer", padding: "4px 0",
+        fontFamily: "Nunito, sans-serif", fontSize: 12, fontWeight: 700, color: t.textSec,
+      }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <Check size={12} color={listColor} />
+          Bockat ({doneItems.length})
+        </span>
+        {open ? <ChevronLeft size={12} color={t.textMuted} style={{ transform: "rotate(90deg)" }} /> : <ChevronRight size={12} color={t.textMuted} style={{ transform: "rotate(90deg)" }} />}
+      </div>
+      {open && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
+          {doneItems.map(item => (
+            <ListItem key={item.id} item={item} listColor={listColor}
+              onToggle={() => onToggle(item)} onDelete={() => onDelete(item)} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ListsView({ lists, pinnedListId, onToggleItem, onTogglePin, onToggleShared, onAddTodo, onAddList, onDeleteList, onDeleteTodo, onArchiveList }) {
   const [expandedId, setExpandedId] = useState(lists[0]?.id)
   const [addingForList, setAddingForList] = useState(null)
@@ -878,56 +1228,64 @@ function ListsView({ lists, pinnedListId, onToggleItem, onTogglePin, onToggleSha
                 {pinned && <span style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "2px 7px", borderRadius: 6, background: `${ACCENT.todo}10`, fontSize: 10, fontWeight: 700, color: ACCENT.todo, fontFamily: "Nunito, sans-serif" }}><Home size={10} /> Hem</span>}
               </div>
             </div>
-            {expanded && (
-              <div style={{ padding: "0 16px 14px" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
-                  {items.map(item => (
-                    <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div onClick={() => onToggleItem(item)} style={{
-                        width: 20, height: 20, borderRadius: 6, cursor: "pointer", flexShrink: 0,
-                        border: item.done ? "none" : `2px solid ${t.textMuted}`,
-                        background: item.done ? list.color : "transparent",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                      }}>{item.done && <Check size={12} color="#fff" strokeWidth={3} />}</div>
-                      <span onClick={() => onToggleItem(item)} style={{
-                        flex: 1, cursor: "pointer",
-                        fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 500,
-                        color: item.done ? t.textMuted : t.text,
-                        textDecoration: item.done ? "line-through" : "none",
-                      }}>{item.text}</span>
-                      <button onClick={() => onDeleteTodo(item)} style={{ background: "none", border: "none", cursor: "pointer", color: t.textMuted, padding: 2 }}><X size={12} /></button>
+            {expanded && (() => {
+              const activeItems = items.filter(i => !i.done)
+              const doneItems = items.filter(i => i.done)
+              return (
+                <div style={{ padding: "0 16px 14px" }}>
+                  {/* Aktiva items */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
+                    {activeItems.map(item => (
+                      <ListItem key={item.id} item={item} listColor={list.color}
+                        onToggle={() => onToggleItem(item)} onDelete={() => onDeleteTodo(item)} />
+                    ))}
+                    {activeItems.length === 0 && (
+                      <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textMuted, fontStyle: "italic", padding: "4px 0" }}>Inga aktiva uppgifter</span>
+                    )}
+                  </div>
+
+                  {/* Lägg till-fält */}
+                  {addingForList === list.id ? (
+                    <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                      <input value={newText} onChange={e => setNewText(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter") submitTodo(list.id); if (e.key === "Escape") { setAddingForList(null); setNewText("") } }}
+                        placeholder="Ny uppgift..." style={{ ...inputStyle, flex: 1, fontSize: 12, padding: "6px 10px" }} autoFocus />
+                      <Btn small color={list.color} onClick={() => submitTodo(list.id)}>+</Btn>
                     </div>
-                  ))}
-                </div>
-                {addingForList === list.id ? (
-                  <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-                    <input value={newText} onChange={e => setNewText(e.target.value)}
-                      onKeyDown={e => { if (e.key === "Enter") submitTodo(list.id); if (e.key === "Escape") { setAddingForList(null); setNewText("") } }}
-                      placeholder="Ny uppgift..." style={{ ...inputStyle, flex: 1, fontSize: 12, padding: "6px 10px" }} autoFocus />
-                    <Btn small color={list.color} onClick={() => submitTodo(list.id)}>+</Btn>
+                  ) : (
+                    <div onClick={() => setAddingForList(list.id)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderTop: `1px solid ${t.line}`, marginBottom: 10, cursor: "pointer" }}>
+                      <Plus size={14} color={t.textMuted} />
+                      <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textMuted }}>Lägg till uppgift...</span>
+                    </div>
+                  )}
+
+                  {/* Bockat-sektion (kollapsbar) */}
+                  {doneItems.length > 0 && (
+                    <CheckedSection
+                      doneItems={doneItems}
+                      listColor={list.color}
+                      onToggle={onToggleItem}
+                      onDelete={onDeleteTodo}
+                    />
+                  )}
+
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+                    <Btn small outline color={pinned ? ACCENT.todo : t.textSec} onClick={e => { e.stopPropagation(); onTogglePin(list.id) }}>
+                      <Home size={12} /> {pinned ? "Visas på hem" : "Visa på hem"}
+                    </Btn>
+                    <Btn small outline color={list.shared ? ACCENT.calendar : t.textSec} onClick={e => { e.stopPropagation(); onToggleShared(list) }}>
+                      {list.shared ? <><Users size={12} /> Delad</> : <><Lock size={12} /> Privat</>}
+                    </Btn>
+                    <Btn small outline color={t.textSec} onClick={e => { e.stopPropagation(); onArchiveList(list.id) }}>
+                      <Archive size={12} /> Arkivera
+                    </Btn>
+                    <Btn small outline color="#dc2626" onClick={e => { e.stopPropagation(); onDeleteList(list.id) }}>
+                      <Trash2 size={12} /> Ta bort
+                    </Btn>
                   </div>
-                ) : (
-                  <div onClick={() => setAddingForList(list.id)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderTop: `1px solid ${t.line}`, marginBottom: 10, cursor: "pointer" }}>
-                    <Plus size={14} color={t.textMuted} />
-                    <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textMuted }}>Lägg till uppgift...</span>
-                  </div>
-                )}
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <Btn small outline color={pinned ? ACCENT.todo : t.textSec} onClick={e => { e.stopPropagation(); onTogglePin(list.id) }}>
-                    <Home size={12} /> {pinned ? "Visas på hem" : "Visa på hem"}
-                  </Btn>
-                  <Btn small outline color={list.shared ? ACCENT.calendar : t.textSec} onClick={e => { e.stopPropagation(); onToggleShared(list) }}>
-                    {list.shared ? <><Users size={12} /> Delad</> : <><Lock size={12} /> Privat</>}
-                  </Btn>
-                  <Btn small outline color={t.textSec} onClick={e => { e.stopPropagation(); onArchiveList(list.id) }}>
-                    <Archive size={12} /> Arkivera
-                  </Btn>
-                  <Btn small outline color="#dc2626" onClick={e => { e.stopPropagation(); onDeleteList(list.id) }}>
-                    <Trash2 size={12} /> Ta bort
-                  </Btn>
                 </div>
-              </div>
-            )}
+              )
+            })()}
           </Card>
         )
       })}
@@ -1916,6 +2274,8 @@ function TabContent({
   foodPrefs, setFoodPrefs, onAiGenerate,
   // settings
   session, household, members, onCreateInvite, tvData, tvSlots, onSaveTvSlots,
+  // activity
+  activity,
 }) {
   const pad = isMobile ? "16px 16px 16px" : "24px 28px"
   if (tab === "hem") {
@@ -1934,6 +2294,7 @@ function TabContent({
             <TodoCard pinnedList={pinnedList} onToggle={onToggleItem} />
             <MealCard mealsByWeekday={mealsByWeekday} mealTagsLocal={mealTagsLocal} onSetMealText={onSetMealText} onSetMealTag={onSetMealTag} />
           </div>
+          <ActivityFeed activity={activity} persons={persons} members={members} userId={userId} max={5} />
         </div>
       </div>
     )
@@ -2228,6 +2589,7 @@ export default function SmartHub({ session, household }) {
   const [tvWidgets, setTvWidgets] = useState(null)
   const [tvSlots, setTvSlots] = useState(null) // {main, bottomLeft, bottomRight}
   const [members, setMembers] = useState([])
+  const [activity, setActivity] = useState([]) // senaste aktiviteter i hushållet
   const [weather, setWeather] = useState(null)
 
   // ── v11 stub state (no Supabase persistence yet — see MIGRATIONS.sql) ──
@@ -2417,6 +2779,35 @@ export default function SmartHub({ session, household }) {
     return () => { cancelled = true }
   }, [householdId])
 
+  // ── Load + subscribe: activity_log ──
+  useEffect(() => {
+    if (!householdId) return
+    let cancelled = false
+    async function load() {
+      const { data } = await supabase.from("activity_log")
+        .select("*").eq("household_id", householdId)
+        .order("created_at", { ascending: false }).limit(50)
+      if (!cancelled && data) setActivity(data)
+    }
+    load()
+    const ch = supabase.channel("activity:" + householdId).on("postgres_changes", {
+      event: "INSERT", schema: "public", table: "activity_log", filter: "household_id=eq." + householdId,
+    }, p => {
+      setActivity(prev => prev.some(a => a.id === p.new.id) ? prev : [p.new, ...prev].slice(0, 50))
+    }).subscribe()
+    return () => { cancelled = true; supabase.removeChannel(ch) }
+  }, [householdId])
+
+  // Logga aktivitet (fire-and-forget)
+  function logActivity(action, entityType, entityId, description) {
+    if (!householdId || !userId) return
+    supabase.from("activity_log").insert({
+      household_id: householdId, user_id: userId,
+      action, entity_type: entityType, entity_id: String(entityId || ""),
+      description,
+    }).then(({ error }) => { if (error) console.warn("[activity]", error.message) })
+  }
+
   // ── Load: food_preferences (per användare) ──
   useEffect(() => {
     if (!userId) return
@@ -2530,23 +2921,29 @@ export default function SmartHub({ session, household }) {
     setTodos(p => p.map(td => td.id === item.id ? { ...td, done: nd, completed_at: nd ? new Date().toISOString() : null } : td))
     const { error } = await supabase.from("todos").update({ done: nd, completed_at: nd ? new Date().toISOString() : null }).eq("id", item.id)
     if (error) setTodos(p => p.map(td => td.id === item.id ? item : td))
+    else if (nd) logActivity("complete_todo", "todo", item.id, `bockade av "${item.text}"`)
   }
   async function handleAddTodo(text, listId) {
     const tmp = { id: "tmp-" + Date.now(), household_id: householdId, text, done: false, list_id: listId, shared: true, created_by: userId, created_at: new Date().toISOString() }
     setTodos(p => [...p, tmp])
     const { data, error } = await supabase.from("todos").insert({ household_id: householdId, text, done: false, list_id: listId, created_by: userId }).select().single()
     if (error) setTodos(p => p.filter(td => td.id !== tmp.id))
-    else setTodos(p => p.map(td => td.id === tmp.id ? data : td))
+    else {
+      setTodos(p => p.map(td => td.id === tmp.id ? data : td))
+      const list = lists.find(l => l.id === listId)
+      logActivity("add_todo", "todo", data.id, `lade till "${text}"${list ? ` på ${list.name}` : ""}`)
+    }
   }
   async function handleDeleteTodo(item) {
     setTodos(p => p.filter(td => td.id !== item.id))
     await supabase.from("todos").delete().eq("id", item.id)
   }
   async function handleAddList(list) {
-    await supabase.from("lists").insert({
+    const { data, error } = await supabase.from("lists").insert({
       household_id: householdId, name: list.name, shared: list.shared,
       color: list.color, expires_at: list.expires_at, created_by: userId,
-    })
+    }).select().single()
+    if (!error && data) logActivity("add_list", "list", data.id, `skapade listan "${list.name}"`)
   }
   async function handleDeleteList(id) {
     setLists(p => p.filter(l => l.id !== id))
@@ -2554,9 +2951,11 @@ export default function SmartHub({ session, household }) {
   }
   // Arkivera = soft-delete: listan göms från huvudvyn men finns kvar i Arkiv.
   async function handleArchiveList(id) {
+    const list = lists.find(l => l.id === id)
     const now = new Date().toISOString()
     setLists(p => p.map(l => l.id === id ? { ...l, archived: true, archived_at: now } : l))
     await supabase.from("lists").update({ archived: true, archived_at: now }).eq("id", id)
+    if (list) logActivity("archive_list", "list", id, `arkiverade "${list.name}"`)
   }
   async function handleRestoreList(id) {
     setLists(p => p.map(l => l.id === id ? { ...l, archived: false, archived_at: null } : l))
@@ -2580,14 +2979,18 @@ export default function SmartHub({ session, household }) {
     await supabase.from("lists").update({ pinned: newPinned }).eq("id", listId)
   }
   async function handleAddEvent(ev) {
-    await supabase.from("calendar_events").insert({
+    const { data, error } = await supabase.from("calendar_events").insert({
       household_id: householdId, title: ev.title,
       start_time: ev.start_time, end_time: ev.end_time,
       location: ev.location, color: ev.color, shared: ev.shared,
       recurrence_rule: ev.recurrence_rule || null,
       reminder_minutes: ev.reminder_minutes ?? null,
       created_by: userId,
-    })
+    }).select().single()
+    if (!error && data) {
+      const dateStr = new Date(ev.start_time).toLocaleDateString("sv-SE", { day: "numeric", month: "short" })
+      logActivity("add_event", "event", data.id, `lade till "${ev.title}" ${dateStr}${ev.recurrence_rule ? " (återkommande)" : ""}`)
+    }
   }
   async function handleUpdateEvent(id, updates) {
     // Optimistic UI: uppdatera local state direkt
@@ -2887,6 +3290,7 @@ export default function SmartHub({ session, household }) {
       mealsByWeekday, mealTagsLocal, weather,
     },
     tvSlots, onSaveTvSlots: handleSaveTvSlots,
+    activity,
   }
 
   // ─── Mobile view ───
