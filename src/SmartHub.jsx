@@ -3413,25 +3413,25 @@ function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWe
   return (
     <div style={{
       width: "100%", height: "100%",
-      background: t.bg, fontFamily: "Nunito, sans-serif",
+      background: t.bg,
+      backgroundImage: photoUrl ? `url("${photoUrl}")` : undefined,
+      backgroundSize: "cover",
+      backgroundPosition: "center",
+      fontFamily: "Nunito, sans-serif",
       display: "flex", flexDirection: "column", overflow: "hidden",
       boxSizing: "border-box",
+      position: "relative",
     }}>
       {photoUrl && (
+        // Semi-transparent overlay så widgets förblir läsbara mot fotot
         <div style={{
-          width: "100%", height: 100, flexShrink: 0,
-          backgroundImage: `url("${photoUrl}")`,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          position: "relative",
-        }}>
-          <div style={{
-            position: "absolute", inset: 0,
-            background: "linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(240,242,245,0.85) 100%)",
-          }} />
-        </div>
+          position: "absolute", inset: 0,
+          background: "rgba(240,242,245,0.55)",
+          backdropFilter: "blur(1px)",
+          pointerEvents: "none",
+        }} />
       )}
-      <div style={{ padding: "24px 20px 12px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+      <div style={{ position: "relative", zIndex: 1, padding: "24px 20px 12px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <ClockDisplay size="huge" />
         <div style={{ textAlign: "right" }}>
           {weather ? <>
@@ -3442,7 +3442,7 @@ function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWe
         </div>
       </div>
       {weather?.forecast && (
-        <div style={{ display: "flex", gap: 8, padding: "0 20px 12px" }}>
+        <div style={{ position: "relative", zIndex: 1, display: "flex", gap: 8, padding: "0 20px 12px" }}>
           {weather.forecast.map(f => (
             <div key={f.day} style={{ flex: 1, background: "rgba(255,255,255,0.7)", borderRadius: 10, padding: "5px 0", textAlign: "center", border: `1px solid ${t.cardBorder}`, boxShadow: "0 1px 2px rgba(0,0,0,0.03)" }}>
               <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 10, fontWeight: 700, color: t.textMuted, letterSpacing: "0.05em" }}>{f.day}</div>
@@ -3452,7 +3452,7 @@ function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWe
           ))}
         </div>
       )}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "0 16px 16px", gap: 10, minHeight: 0 }}>
+      <div style={{ position: "relative", zIndex: 1, flex: 1, display: "flex", flexDirection: "column", padding: "0 16px 16px", gap: 10, minHeight: 0 }}>
         <TvLayoutGrid layoutKey={layoutKey} slots={s} widgetProps={widgetProps} slotOverlay={slotOverlay} />
       </div>
     </div>
