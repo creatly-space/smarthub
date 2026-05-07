@@ -2331,15 +2331,60 @@ function normalizeTvWidget(w) {
   }
 }
 
-function TvEditorSection({ onBack, isMobile, tvData, tvSlots, onSaveTvSlots, tvPhotoUrl, onSaveTvPhoto }) {
+// Liten visuell mini-preview för varje layout
+function LayoutPresetMini({ layoutKey, active }) {
+  const preset = LAYOUT_PRESETS[layoutKey]
+  const color = active ? ACCENT.calendar : t.textMuted
+  const cellStyle = {
+    background: `${color}25`,
+    border: `1px solid ${color}50`,
+    borderRadius: 2,
+  }
+  const W = 32, H = 50
+  // Specialfall för sidebar
+  if (preset.sidebarLayout) {
+    return (
+      <div style={{ width: W, height: H, display: "flex", gap: 2 }}>
+        <div style={{ ...cellStyle, flex: 1 }} />
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
+          <div style={{ ...cellStyle, flex: 1 }} />
+          <div style={{ ...cellStyle, flex: 1 }} />
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div style={{ width: W, height: H, display: "flex", flexDirection: "column", gap: 2 }}>
+      {preset.rows.map((row, ri) => (
+        <div key={ri} style={{ flex: row.flex, display: "flex", gap: 2 }}>
+          {row.slots.map((s, si) => (
+            <div key={si} style={{ ...cellStyle, flex: s.flex }} />
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function TvEditorSection({ onBack, isMobile, tvData, tvSlots, onSaveTvSlots, tvPhotoUrl, onSaveTvPhoto, onUploadTvPhoto }) {
   const [slots, setSlots] = useState(() => ({ ...DEFAULT_TV_SLOTS, ...(tvSlots || {}) }))
   const [pickerOpen, setPickerOpen] = useState(null)
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState(null)
-  const [photoInput, setPhotoInput] = useState(tvPhotoUrl || "")
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState(null)
+  const fileInputRef = useRef(null)
   const scale = isMobile ? 0.45 : 0.55
 
-  useEffect(() => { setPhotoInput(tvPhotoUrl || "") }, [tvPhotoUrl])
+  async function handleFilePick(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true); setUploadError(null)
+    const result = await onUploadTvPhoto(file)
+    setUploading(false)
+    if (!result?.ok) setUploadError(result?.error || "Uppladdning misslyckades")
+    if (fileInputRef.current) fileInputRef.current.value = ""
+  }
 
   // Synka in när tvSlots från DB ändras (t.ex. realtime från annan enhet)
   useEffect(() => {
@@ -2360,6 +2405,19 @@ function TvEditorSection({ onBack, isMobile, tvData, tvSlots, onSaveTvSlots, tvP
     setPickerOpen(null)
     saveSlots(newSlots)
   }
+  // Byter aktiv layout. Slot-keys ändras → använder defaults för nya, behåller widget-val där samma key finns.
+  function changeLayout(newLayout) {
+    const preset = LAYOUT_PRESETS[newLayout]
+    if (!preset) return
+    const newSlots = { layout: newLayout, ...preset.defaults }
+    // Behåll redan-valda widgets för slot-keys som är samma i båda layouts
+    preset.slots.forEach(key => {
+      if (slots[key]) newSlots[key] = slots[key]
+    })
+    setSlots(newSlots)
+    saveSlots(newSlots)
+  }
+  const currentLayout = slots.layout || "standard"
 
   // Render-prop: lägger en klickbar overlay över varje slot i preview:n
   const slotOverlay = (slotId, currentType) => (
@@ -2388,6 +2446,31 @@ function TvEditorSection({ onBack, isMobile, tvData, tvSlots, onSaveTvSlots, tvP
         Pi-kiosken laddar <code style={{ background: t.inputBg, padding: "1px 6px", borderRadius: 4 }}>?mode=tv</code> i URL:en.
       </p>
 
+      <Card style={{ marginBottom: 12 }}>
+        <div style={{ padding: 14 }}>
+          <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 10 }}>📐 Layout</div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(5, 1fr)", gap: 8 }}>
+            {Object.entries(LAYOUT_PRESETS).map(([key, preset]) => {
+              const active = currentLayout === key
+              return (
+                <button key={key} onClick={() => changeLayout(key)} style={{
+                  padding: "10px 8px", borderRadius: 10,
+                  background: active ? `${ACCENT.calendar}10` : t.inputBg,
+                  border: active ? `2px solid ${ACCENT.calendar}` : "2px solid transparent",
+                  cursor: "pointer", fontFamily: "Nunito, sans-serif",
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+                  textAlign: "center",
+                }}>
+                  <LayoutPresetMini layoutKey={key} active={active} />
+                  <span style={{ fontSize: 11, fontWeight: 700, color: active ? ACCENT.calendar : t.text }}>{preset.label}</span>
+                  <span style={{ fontSize: 9, color: t.textMuted, lineHeight: 1.2 }}>{preset.description}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      </Card>
+
       <div style={{ display: "flex", justifyContent: "center", padding: "8px 0 16px" }}>
         <TvPreview
           scale={scale}
@@ -2405,24 +2488,40 @@ function TvEditorSection({ onBack, isMobile, tvData, tvSlots, onSaveTvSlots, tvP
         <div style={{ padding: 14 }}>
           <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 6 }}>📸 Foto-header på TV:n</div>
           <p style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textSec, margin: "0 0 10px" }}>
-            Klistra in en bild-URL — visas som banner högst upp på TV:n. Bra för familjebild, semesterminne eller stämningsbild.
+            Ladda upp en bild — visas som banner högst upp på TV:n. Bra för familjebild, semesterminne eller stämningsbild.
           </p>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <input value={photoInput} onChange={e => setPhotoInput(e.target.value)} placeholder="https://exempel.com/familjebild.jpg" style={{ ...inputStyle, fontSize: 13, flex: 1, minWidth: 200 }} />
-            <Btn small color={ACCENT.calendar} onClick={() => onSaveTvPhoto(photoInput.trim() || null)}>
-              <Check size={12} /> Spara
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            onChange={handleFilePick}
+            style={{ display: "none" }}
+          />
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <Btn small color={ACCENT.calendar} onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+              {uploading ? "Laddar upp..." : <>📁 Välj bild från enheten</>}
             </Btn>
             {tvPhotoUrl && (
-              <Btn small outline color="#dc2626" onClick={() => { setPhotoInput(""); onSaveTvPhoto(null) }}>
+              <Btn small outline color="#dc2626" onClick={() => onSaveTvPhoto(null)}>
                 <X size={12} /> Ta bort
               </Btn>
             )}
           </div>
-          {tvPhotoUrl && (
-            <div style={{ marginTop: 10, height: 60, borderRadius: 8, backgroundImage: `url("${tvPhotoUrl}")`, backgroundSize: "cover", backgroundPosition: "center", border: `1px solid ${t.cardBorder}` }} />
+
+          {uploadError && (
+            <div style={{ marginTop: 8, fontFamily: "Nunito, sans-serif", fontSize: 12, color: "#dc2626" }}>
+              ⚠ {uploadError}
+            </div>
           )}
+
+          {tvPhotoUrl && (
+            <div style={{ marginTop: 10, height: 80, borderRadius: 8, backgroundImage: `url("${tvPhotoUrl}")`, backgroundSize: "cover", backgroundPosition: "center", border: `1px solid ${t.cardBorder}` }} />
+          )}
+
           <p style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textMuted, margin: "8px 0 0" }}>
-            <strong>Tips:</strong> Ladda upp till imgur.com eller liknande och klistra in direktlänken till bilden (.jpg/.png).
+            JPG, PNG, WebP eller GIF · Max 10 MB
           </p>
         </div>
       </Card>
@@ -2442,7 +2541,7 @@ function TvEditorSection({ onBack, isMobile, tvData, tvSlots, onSaveTvSlots, tvP
           }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 18, fontWeight: 700, color: t.text }}>
-                Välj widget för {pickerOpen === "main" ? "huvud-rutan" : pickerOpen === "bottomLeft" ? "nedre vänster" : "nedre höger"}
+                Välj widget för {SLOT_LABELS[pickerOpen] || pickerOpen}
               </span>
               <button onClick={() => setPickerOpen(null)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}>
                 <X size={20} color={t.textSec} />
@@ -2492,7 +2591,7 @@ function AccountSection({ onBack }) {
   )
 }
 
-function SettingsTab({ isMobile, session, household, members, foodPrefs, setFoodPrefs, onCreateInvite, tvData, tvSlots, onSaveTvSlots, tvPhotoUrl, onSaveTvPhoto, userId }) {
+function SettingsTab({ isMobile, session, household, members, foodPrefs, setFoodPrefs, onCreateInvite, tvData, tvSlots, onSaveTvSlots, tvPhotoUrl, onSaveTvPhoto, onUploadTvPhoto, userId }) {
   const [activeSection, setActiveSection] = useState(null)
   const sections = [
     { id: "profile", icon: User, label: "Profil", desc: "Namn, profilbild" },
@@ -2501,7 +2600,7 @@ function SettingsTab({ isMobile, session, household, members, foodPrefs, setFood
     { id: "food", icon: UtensilsCrossed, label: "Matpreferenser", desc: "Gillar, gillar inte, budget" },
     { id: "account", icon: LogOut, label: "Konto", desc: "Logga ut" },
   ]
-  if (activeSection === "tv") return <TvEditorSection onBack={() => setActiveSection(null)} isMobile={isMobile} tvData={tvData} tvSlots={tvSlots} onSaveTvSlots={onSaveTvSlots} tvPhotoUrl={tvPhotoUrl} onSaveTvPhoto={onSaveTvPhoto} />
+  if (activeSection === "tv") return <TvEditorSection onBack={() => setActiveSection(null)} isMobile={isMobile} tvData={tvData} tvSlots={tvSlots} onSaveTvSlots={onSaveTvSlots} tvPhotoUrl={tvPhotoUrl} onSaveTvPhoto={onSaveTvPhoto} onUploadTvPhoto={onUploadTvPhoto} />
   if (activeSection === "profile") return <ProfileSection onBack={() => setActiveSection(null)} session={session} />
   if (activeSection === "household") return <HouseholdSection onBack={() => setActiveSection(null)} household={household} members={members} userId={userId} onCreateInvite={onCreateInvite} />
   if (activeSection === "food") return <FoodPrefsSection onBack={() => setActiveSection(null)} foodPrefs={foodPrefs} setFoodPrefs={setFoodPrefs} />
@@ -2727,7 +2826,7 @@ function TabContent({
   foodPrefs, setFoodPrefs, onAiGenerate,
   // settings
   session, household, members, onCreateInvite, tvData, tvSlots, onSaveTvSlots,
-  tvPhotoUrl, onSaveTvPhoto,
+  tvPhotoUrl, onSaveTvPhoto, onUploadTvPhoto,
   // activity + countdowns + meal history
   activity, countdowns, onAddCountdown, onDeleteCountdown,
   householdIdProp, currentWeekStart,
@@ -2812,7 +2911,7 @@ function TabContent({
         foodPrefs={foodPrefs} setFoodPrefs={setFoodPrefs}
         onCreateInvite={onCreateInvite}
         tvData={tvData} tvSlots={tvSlots} onSaveTvSlots={onSaveTvSlots}
-        tvPhotoUrl={tvPhotoUrl} onSaveTvPhoto={onSaveTvPhoto}
+        tvPhotoUrl={tvPhotoUrl} onSaveTvPhoto={onSaveTvPhoto} onUploadTvPhoto={onUploadTvPhoto}
         userId={userId} />
     </div>
   )
@@ -2902,7 +3001,71 @@ const TV_SLOT_OPTIONS = [
   { id: "events",   label: "Dagens händelser", color: ACCENT.event, icon: CalendarDays },
   { id: "empty",    label: "Tom",      color: t.textMuted,     icon: X },
 ]
-const DEFAULT_TV_SLOTS = { main: "calendar", bottomLeft: "todo", bottomRight: "meal" }
+const DEFAULT_TV_SLOTS = { layout: "standard", main: "calendar", bottomLeft: "todo", bottomRight: "meal" }
+const SLOT_LABELS = {
+  main: "huvud-rutan",
+  top: "övre rutan",
+  middle: "mellersta rutan",
+  bottom: "nedre rutan",
+  topLeft: "övre vänster",
+  topRight: "övre höger",
+  bottomLeft: "nedre vänster",
+  bottomRight: "nedre höger",
+  left: "vänstra rutan",
+}
+
+// Layout-presets för TV-vyn. Varje preset definierar slot-keys + flex-storlekar.
+const LAYOUT_PRESETS = {
+  standard: {
+    label: "Klassisk",
+    description: "Stor topp + 2 små i botten",
+    slots: ["main", "bottomLeft", "bottomRight"],
+    defaults: { main: "calendar", bottomLeft: "todo", bottomRight: "meal" },
+    // Visuellt mönster: rader med flex
+    rows: [
+      { flex: 6, slots: [{ key: "main", flex: 1 }] },
+      { flex: 4, slots: [{ key: "bottomLeft", flex: 1 }, { key: "bottomRight", flex: 1 }] },
+    ],
+  },
+  stacked: {
+    label: "Tre staplade",
+    description: "3 lika stora rader",
+    slots: ["top", "middle", "bottom"],
+    defaults: { top: "calendar", middle: "todo", bottom: "meal" },
+    rows: [
+      { flex: 1, slots: [{ key: "top", flex: 1 }] },
+      { flex: 1, slots: [{ key: "middle", flex: 1 }] },
+      { flex: 1, slots: [{ key: "bottom", flex: 1 }] },
+    ],
+  },
+  quad: {
+    label: "Rutnät 2×2",
+    description: "Fyra lika stora rutor",
+    slots: ["topLeft", "topRight", "bottomLeft", "bottomRight"],
+    defaults: { topLeft: "calendar", topRight: "events", bottomLeft: "todo", bottomRight: "meal" },
+    rows: [
+      { flex: 1, slots: [{ key: "topLeft", flex: 1 }, { key: "topRight", flex: 1 }] },
+      { flex: 1, slots: [{ key: "bottomLeft", flex: 1 }, { key: "bottomRight", flex: 1 }] },
+    ],
+  },
+  hero: {
+    label: "En stor",
+    description: "En widget fyller hela",
+    slots: ["main"],
+    defaults: { main: "calendar" },
+    rows: [
+      { flex: 1, slots: [{ key: "main", flex: 1 }] },
+    ],
+  },
+  sidebar: {
+    label: "Sido-stack",
+    description: "Hög vänster, 2 högt höger",
+    slots: ["left", "topRight", "bottomRight"],
+    defaults: { left: "calendar", topRight: "todo", bottomRight: "meal" },
+    rows: [], // Renderas som horisontellt flex (inte rader) — hanteras separat
+    sidebarLayout: true,
+  },
+}
 
 // Standardiserad widget-renderer för TV-slots
 function renderTvSlotWidget(type, p) {
@@ -2955,8 +3118,51 @@ function TvEventsCard({ events, persons }) {
 // `slots` styr vilka widgets som syns i de 3 slottarna (main, bottomLeft, bottomRight).
 // `slotOverlay(slotId)` är en valfri render prop som lägger en klickbar overlay över varje slot
 // (används av editor:n för att kunna byta widget).
+// Renderar slot-grid baserat på vald layout
+function TvLayoutGrid({ layoutKey, slots, widgetProps, slotOverlay }) {
+  const preset = LAYOUT_PRESETS[layoutKey] || LAYOUT_PRESETS.standard
+
+  // Sidebar-layouten är speciell: horisontell delning
+  if (preset.sidebarLayout) {
+    return (
+      <div style={{ flex: 1, display: "flex", gap: 10, minHeight: 0 }}>
+        <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
+          {renderTvSlotWidget(slots.left, widgetProps)}
+          {slotOverlay && slotOverlay("left", slots.left)}
+        </div>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10, minHeight: 0 }}>
+          <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
+            {renderTvSlotWidget(slots.topRight, widgetProps)}
+            {slotOverlay && slotOverlay("topRight", slots.topRight)}
+          </div>
+          <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
+            {renderTvSlotWidget(slots.bottomRight, widgetProps)}
+            {slotOverlay && slotOverlay("bottomRight", slots.bottomRight)}
+          </div>
+        </div>
+      </div>
+    )
+  }
+  // Vanlig rad-baserad layout
+  return (
+    <>
+      {preset.rows.map((row, ri) => (
+        <div key={ri} style={{ flex: row.flex, display: "flex", gap: 10, minHeight: 0 }}>
+          {row.slots.map(s => (
+            <div key={s.key} style={{ flex: s.flex, display: "flex", minHeight: 0, position: "relative" }}>
+              {renderTvSlotWidget(slots[s.key], widgetProps)}
+              {slotOverlay && slotOverlay(s.key, slots[s.key])}
+            </div>
+          ))}
+        </div>
+      ))}
+    </>
+  )
+}
+
 function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, weather, slots, slotOverlay, onDayClick, photoUrl }) {
   const s = { ...DEFAULT_TV_SLOTS, ...(slots || {}) }
+  const layoutKey = s.layout || "standard"
   const widgetProps = { persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, onDayClick }
   return (
     <div style={{
@@ -3001,20 +3207,7 @@ function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWe
         </div>
       )}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "0 16px 16px", gap: 10, minHeight: 0 }}>
-        <div style={{ flex: 6, display: "flex", minHeight: 0, position: "relative" }}>
-          {renderTvSlotWidget(s.main, widgetProps)}
-          {slotOverlay && slotOverlay("main", s.main)}
-        </div>
-        <div style={{ flex: 4, display: "flex", gap: 10, minHeight: 0 }}>
-          <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
-            {renderTvSlotWidget(s.bottomLeft, widgetProps)}
-            {slotOverlay && slotOverlay("bottomLeft", s.bottomLeft)}
-          </div>
-          <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
-            {renderTvSlotWidget(s.bottomRight, widgetProps)}
-            {slotOverlay && slotOverlay("bottomRight", s.bottomRight)}
-          </div>
-        </div>
+        <TvLayoutGrid layoutKey={layoutKey} slots={s} widgetProps={widgetProps} slotOverlay={slotOverlay} />
       </div>
     </div>
   )
@@ -3596,11 +3789,25 @@ export default function SmartHub({ session, household }) {
     }, { onConflict: "household_id" })
   }
   async function handleAddCountdown(c) {
+    // Optimistic: lägg till direkt så användaren ser feedback omgående
+    const tmp = {
+      id: "tmp-" + Date.now(), household_id: householdId,
+      title: c.title, target_date: c.target_date,
+      color: c.color || ACCENT.calendar, emoji: c.emoji || null,
+      created_by: userId, created_at: new Date().toISOString(),
+    }
+    setCountdowns(p => [...p, tmp].sort((a, b) => a.target_date.localeCompare(b.target_date)))
     const { data, error } = await supabase.from("countdowns").insert({
       household_id: householdId, title: c.title, target_date: c.target_date,
       color: c.color || ACCENT.calendar, emoji: c.emoji || null, created_by: userId,
     }).select().single()
-    if (!error && data) logActivity("add_countdown", "countdown", data.id, `lade till nedräkningen "${c.title}"`)
+    if (error) {
+      console.error("[handleAddCountdown]", error)
+      setCountdowns(p => p.filter(c => c.id !== tmp.id))
+      return
+    }
+    setCountdowns(p => p.map(c => c.id === tmp.id ? data : c))
+    logActivity("add_countdown", "countdown", data.id, `lade till nedräkningen "${c.title}"`)
   }
   async function handleDeleteCountdown(id) {
     setCountdowns(p => p.filter(c => c.id !== id))
@@ -3613,6 +3820,25 @@ export default function SmartHub({ session, household }) {
       household_id: householdId, photo_url: url, updated_at: new Date().toISOString(),
     }, { onConflict: "household_id" })
     if (error) console.warn("[tvPhoto]", error.message)
+  }
+  // Laddar upp en bildfil till Supabase Storage och sparar URL:en på tv_layouts
+  async function handleUploadTvPhoto(file) {
+    if (!householdId || !file) return { ok: false, error: "Ingen fil" }
+    // Ext från mime: jpg/png/webp/gif
+    const ext = (file.name.split(".").pop() || "jpg").toLowerCase()
+    const path = `${householdId}.${ext}`
+    const { error: upErr } = await supabase.storage.from("tv-photos").upload(path, file, {
+      upsert: true, cacheControl: "3600",
+    })
+    if (upErr) {
+      console.error("[uploadTvPhoto]", upErr)
+      return { ok: false, error: upErr.message }
+    }
+    // Hämta publik URL + cachebuster så TV:n laddar nya bilden direkt
+    const { data: { publicUrl } } = supabase.storage.from("tv-photos").getPublicUrl(path)
+    const url = publicUrl + "?v=" + Date.now()
+    await handleSaveTvPhoto(url)
+    return { ok: true, url }
   }
   async function handleSaveTvSlots(slots) {
     setTvSlots(slots)
@@ -3851,7 +4077,7 @@ export default function SmartHub({ session, household }) {
       photoUrl: tvPhotoUrl,
     },
     tvSlots, onSaveTvSlots: handleSaveTvSlots,
-    tvPhotoUrl, onSaveTvPhoto: handleSaveTvPhoto,
+    tvPhotoUrl, onSaveTvPhoto: handleSaveTvPhoto, onUploadTvPhoto: handleUploadTvPhoto,
     activity,
     countdowns, onAddCountdown: handleAddCountdown, onDeleteCountdown: handleDeleteCountdown,
     householdIdProp: householdId, currentWeekStart,
