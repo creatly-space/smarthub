@@ -778,6 +778,239 @@ function ActivityFeed({ activity, persons, members, userId, max = 5 }) {
   )
 }
 
+// Beräknar antal dagar mellan idag (lokalt) och target_date
+function daysUntilDate(dateStr) {
+  const today = new Date()
+  const target = new Date(dateStr + "T00:00:00")
+  return Math.floor((target - new Date(today.getFullYear(), today.getMonth(), today.getDate())) / 86400000)
+}
+
+// Stor, kvadratisk hero-widget för Hem-vyn — visar EN pinned countdown
+function BigCountdownWidget({ pinnedCountdown, onOpenTab }) {
+  if (!pinnedCountdown) {
+    return (
+      <Card>
+        <div onClick={onOpenTab} style={{
+          padding: "20px 16px", textAlign: "center", cursor: "pointer",
+          display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+        }}>
+          <div style={{ fontSize: 32 }}>🎯</div>
+          <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 14, fontWeight: 700, color: t.text }}>Inga fästa nedräkningar</div>
+          <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textSec }}>
+            Gå till Nedräkningar-fliken och fäst en så visas den här
+          </div>
+        </div>
+      </Card>
+    )
+  }
+  const c = pinnedCountdown
+  const days = daysUntilDate(c.target_date)
+  const isToday = days === 0
+  const isPast = days < 0
+  const isSoon = days <= 7 && days > 0
+  // Color-tema
+  const bg1 = `${c.color}15`
+  const bg2 = `${c.color}06`
+  const dateStr = new Date(c.target_date + "T00:00:00").toLocaleDateString("sv-SE", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+  return (
+    <Card accent={c.color}>
+      <div style={{
+        position: "relative",
+        padding: "24px 20px 22px",
+        background: `linear-gradient(135deg, ${bg1}, ${bg2})`,
+        display: "flex", alignItems: "center", gap: 20,
+        minHeight: 160,
+      }}>
+        {/* Stor siffra till vänster */}
+        <div style={{
+          flexShrink: 0,
+          width: 130, height: 130,
+          borderRadius: 20,
+          background: `${c.color}20`,
+          border: `2px solid ${c.color}40`,
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+          boxShadow: `0 4px 16px ${c.color}25`,
+        }}>
+          {isToday ? (
+            <>
+              <div style={{ fontSize: 40 }}>🎉</div>
+              <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 22, fontWeight: 700, color: c.color, marginTop: 4 }}>IDAG!</div>
+            </>
+          ) : isPast ? (
+            <>
+              <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 56, fontWeight: 700, color: t.textMuted, lineHeight: 1 }}>{Math.abs(days)}</div>
+              <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, fontWeight: 700, color: t.textMuted, marginTop: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                dagar sen
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 64, fontWeight: 700, color: c.color, lineHeight: 1, letterSpacing: "-0.03em" }}>{days}</div>
+              <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, fontWeight: 700, color: c.color, marginTop: 4, textTransform: "uppercase", letterSpacing: "0.05em", opacity: 0.85 }}>
+                {days === 1 ? "DAG KVAR" : "DAGAR KVAR"}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Titel + datum till höger */}
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+          {c.emoji && <div style={{ fontSize: 36, lineHeight: 1 }}>{c.emoji}</div>}
+          <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 22, fontWeight: 700, color: t.text, lineHeight: 1.15, wordBreak: "break-word" }}>
+            {c.title}
+          </div>
+          <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textSec, textTransform: "capitalize" }}>
+            {dateStr}
+          </div>
+          {isSoon && !isToday && (
+            <div style={{
+              alignSelf: "flex-start",
+              fontFamily: "Nunito, sans-serif", fontSize: 10, fontWeight: 700,
+              color: "#dc2626", background: "#dc262615",
+              padding: "3px 8px", borderRadius: 6, marginTop: 4,
+            }}>SNART!</div>
+          )}
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+// Full Countdowns-flik: lista alla, pin/unpin, lägg till/ta bort
+function CountdownsTab({ isMobile, countdowns, onAdd, onDelete, onTogglePin }) {
+  const [showAdd, setShowAdd] = useState(false)
+  const [title, setTitle] = useState("")
+  const [date, setDate] = useState("")
+  const [emoji, setEmoji] = useState("")
+  const [color, setColor] = useState(LIST_COLORS[0])
+
+  const today = new Date()
+  const todayStr = fmtDate(today)
+  const upcoming = countdowns.filter(c => c.target_date >= todayStr).sort((a, b) => a.target_date.localeCompare(b.target_date))
+  const past = countdowns.filter(c => c.target_date < todayStr).sort((a, b) => b.target_date.localeCompare(a.target_date))
+
+  function submit() {
+    if (!title.trim() || !date) return
+    onAdd({ title: title.trim(), target_date: date, color, emoji: emoji.trim() || null })
+    setTitle(""); setDate(""); setEmoji(""); setColor(LIST_COLORS[0]); setShowAdd(false)
+  }
+
+  function CountdownRow({ c, isPast }) {
+    const days = daysUntilDate(c.target_date)
+    const isToday = days === 0
+    const dateStr = new Date(c.target_date + "T00:00:00").toLocaleDateString("sv-SE", { day: "numeric", month: "long", year: "numeric" })
+    return (
+      <Card accent={c.color}>
+        <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 12 }}>
+          {c.emoji && <div style={{ fontSize: 28, flexShrink: 0 }}>{c.emoji}</div>}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 14, fontWeight: 700, color: t.text }}>{c.title}</span>
+              {c.pinned && <span style={{ fontSize: 9, fontWeight: 700, color: ACCENT.todo, background: `${ACCENT.todo}15`, padding: "1px 6px", borderRadius: 4 }}>📌 Hem</span>}
+            </div>
+            <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textMuted, marginTop: 2 }}>{dateStr}</div>
+          </div>
+          <div style={{ textAlign: "right", flexShrink: 0 }}>
+            {isToday ? (
+              <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 18, fontWeight: 700, color: "#dc2626" }}>Idag!</div>
+            ) : isPast ? (
+              <>
+                <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 22, fontWeight: 700, color: t.textMuted, lineHeight: 1 }}>{Math.abs(days)}</div>
+                <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 9, color: t.textMuted, marginTop: 2 }}>dagar sen</div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 26, fontWeight: 700, color: c.color, lineHeight: 1 }}>{days}</div>
+                <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 9, color: t.textMuted, marginTop: 2 }}>{days === 1 ? "dag" : "dagar"}</div>
+              </>
+            )}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
+            {!isPast && (
+              <button onClick={() => onTogglePin(c.id)} title={c.pinned ? "Ta bort från Hem" : "Visa på Hem"} style={{
+                background: c.pinned ? `${ACCENT.todo}15` : "transparent",
+                border: "none", cursor: "pointer", padding: 6, borderRadius: 6,
+                color: c.pinned ? ACCENT.todo : t.textMuted, display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                <Home size={14} />
+              </button>
+            )}
+            <button onClick={() => onDelete(c.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 6, color: t.textMuted, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      </Card>
+    )
+  }
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <h2 style={{ fontFamily: "Comfortaa, sans-serif", fontSize: isMobile ? 22 : 24, fontWeight: 700, color: t.text, margin: 0 }}>Nedräkningar</h2>
+        {!showAdd && <Btn onClick={() => setShowAdd(true)}><Plus size={14} /> Ny nedräkning</Btn>}
+      </div>
+
+      {showAdd && (
+        <Card style={{ marginBottom: 16 }}>
+          <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 14, fontWeight: 700, color: t.text }}>Ny nedräkning</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input value={emoji} onChange={e => setEmoji(e.target.value.slice(0, 2))} placeholder="🏖️" style={{ ...inputStyle, fontSize: 20, width: 60, textAlign: "center", padding: "8px 4px" }} />
+              <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Vad? T.ex. Mallorca" style={{ ...inputStyle, fontSize: 14, flex: 1 }} autoFocus />
+            </div>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ ...inputStyle, fontSize: 13 }} />
+            <div>
+              <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, fontWeight: 600, color: t.textSec, marginBottom: 6, display: "block" }}>Färg</span>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {LIST_COLORS.map(c => (
+                  <button key={c} onClick={() => setColor(c)} style={{
+                    width: 28, height: 28, borderRadius: 14, background: c,
+                    border: color === c ? `3px solid ${t.text}` : "3px solid transparent",
+                    cursor: "pointer", padding: 0,
+                  }} />
+                ))}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <Btn outline small onClick={() => { setShowAdd(false); setTitle(""); setDate("") }}><X size={12} /> Avbryt</Btn>
+              <Btn small color={ACCENT.calendar} onClick={submit} disabled={!title.trim() || !date}><Check size={12} /> Spara</Btn>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {countdowns.length === 0 && !showAdd && (
+        <Card>
+          <div style={{ padding: 32, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+            <div style={{ fontSize: 40 }}>🎯</div>
+            <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 14, fontWeight: 700, color: t.text }}>Inga nedräkningar än</div>
+            <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textSec }}>Lägg till en så ser du dagarna ticka ner.</div>
+          </div>
+        </Card>
+      )}
+
+      {upcoming.length > 0 && (
+        <>
+          <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, fontWeight: 700, color: t.textMuted, textTransform: "uppercase", letterSpacing: "0.08em", margin: "8px 4px 6px" }}>Kommande</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+            {upcoming.map(c => <CountdownRow key={c.id} c={c} isPast={false} />)}
+          </div>
+        </>
+      )}
+
+      {past.length > 0 && (
+        <>
+          <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, fontWeight: 700, color: t.textMuted, textTransform: "uppercase", letterSpacing: "0.08em", margin: "8px 4px 6px" }}>Passerade</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, opacity: 0.7 }}>
+            {past.slice(0, 5).map(c => <CountdownRow key={c.id} c={c} isPast={true} />)}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // Visar nedräkningar till framtida händelser (semester, födelsedagar, läkartider)
 function CountdownsCard({ countdowns, onAdd, onDelete }) {
   const [showAdd, setShowAdd] = useState(false)
@@ -2814,7 +3047,7 @@ function AiChat({ position = "fixed", callAi, executeTool }) {
 //  TAB CONTENT (shared between Mobile & Desktop)
 // ════════════════════════════════════════════════
 function TabContent({
-  tab, isMobile, weather,
+  tab, setTab, isMobile, weather,
   // lists
   listsWithItems, archivedLists, pinnedListId, onToggleItem, onTogglePin, onToggleShared,
   onAddTodo, onAddList, onDeleteList, onDeleteTodo, onArchiveList, onRestoreList,
@@ -2828,7 +3061,7 @@ function TabContent({
   session, household, members, onCreateInvite, tvData, tvSlots, onSaveTvSlots,
   tvPhotoUrl, onSaveTvPhoto, onUploadTvPhoto,
   // activity + countdowns + meal history
-  activity, countdowns, onAddCountdown, onDeleteCountdown,
+  activity, countdowns, onAddCountdown, onDeleteCountdown, onTogglePinCountdown,
   householdIdProp, currentWeekStart,
 }) {
   const pad = isMobile ? "16px 16px 16px" : "24px 28px"
@@ -2864,7 +3097,7 @@ function TabContent({
             <TodoCard pinnedList={pinnedList} onToggle={onToggleItem} />
             <MealCard mealsByWeekday={mealsByWeekday} mealTagsLocal={mealTagsLocal} onSetMealText={onSetMealText} onSetMealTag={onSetMealTag} />
           </div>
-          <CountdownsCard countdowns={countdowns} onAdd={onAddCountdown} onDelete={onDeleteCountdown} />
+          <BigCountdownWidget pinnedCountdown={countdowns.find(c => c.pinned && daysUntilDate(c.target_date) >= 0)} onOpenTab={() => setTab("nedrakning")} />
           <ActivityFeed activity={activity} persons={persons} members={members} userId={userId} max={5} />
         </div>
       </div>
@@ -2905,6 +3138,17 @@ function TabContent({
     )
   }
   if (tab === "mat") return <div style={{ padding: pad }}><MealTab isMobile={isMobile} mealsByWeekday={mealsByWeekday} mealTagsLocal={mealTagsLocal} onSetMealText={onSetMealText} onSetMealTag={onSetMealTag} foodPrefs={foodPrefs} setFoodPrefs={setFoodPrefs} onAiGenerate={onAiGenerate} householdId={householdIdProp} currentWeekStart={currentWeekStart} /></div>
+  if (tab === "nedrakning") return (
+    <div style={{ padding: pad }}>
+      <CountdownsTab
+        isMobile={isMobile}
+        countdowns={countdowns}
+        onAdd={onAddCountdown}
+        onDelete={onDeleteCountdown}
+        onTogglePin={onTogglePinCountdown}
+      />
+    </div>
+  )
   if (tab === "mer") return (
     <div style={{ padding: pad }}>
       <SettingsTab isMobile={isMobile} session={session} household={household} members={members}
@@ -2927,6 +3171,7 @@ function MobileNav({ tab, setTab }) {
     { id: "kalender", icon: CalendarDays, label: "Kalender" },
     { id: "listor", icon: ListChecks, label: "Listor" },
     { id: "mat", icon: UtensilsCrossed, label: "Mat" },
+    { id: "nedrakning", icon: Sparkles, label: "Räknare" },
     { id: "mer", icon: MoreHorizontal, label: "Mer" },
   ]
   return (
@@ -2951,6 +3196,7 @@ function DesktopSidebar({ tab, setTab, session, weather, household }) {
     { id: "kalender", icon: CalendarDays, label: "Kalender" },
     { id: "listor", icon: ListChecks, label: "Listor" },
     { id: "mat", icon: UtensilsCrossed, label: "Mat" },
+    { id: "nedrakning", icon: Sparkles, label: "Nedräkningar" },
     { id: "mer", icon: Settings, label: "Inställningar" },
   ]
   const email = session?.user?.email || ""
@@ -3813,6 +4059,17 @@ export default function SmartHub({ session, household }) {
     setCountdowns(p => p.filter(c => c.id !== id))
     await supabase.from("countdowns").delete().eq("id", id)
   }
+  // Bara EN countdown kan vara pinned. Toggla av om redan pinned.
+  async function handleTogglePinCountdown(id) {
+    const target = countdowns.find(c => c.id === id)
+    if (!target) return
+    const newPinned = !target.pinned
+    setCountdowns(p => p.map(c => c.household_id === householdId
+      ? { ...c, pinned: c.id === id ? newPinned : false }
+      : c))
+    await supabase.from("countdowns").update({ pinned: false }).eq("household_id", householdId).neq("id", id)
+    await supabase.from("countdowns").update({ pinned: newPinned }).eq("id", id)
+  }
   async function handleSaveTvPhoto(url) {
     setTvPhotoUrl(url)
     if (!householdId) return
@@ -4049,7 +4306,7 @@ export default function SmartHub({ session, household }) {
   }
 
   const tabContentProps = {
-    tab, isMobile: view === "mobile", weather,
+    tab, setTab, isMobile: view === "mobile", weather,
     listsWithItems, archivedLists, pinnedListId,
     onToggleItem: handleToggleTodo,
     onTogglePin: handleTogglePin,
@@ -4079,7 +4336,7 @@ export default function SmartHub({ session, household }) {
     tvSlots, onSaveTvSlots: handleSaveTvSlots,
     tvPhotoUrl, onSaveTvPhoto: handleSaveTvPhoto, onUploadTvPhoto: handleUploadTvPhoto,
     activity,
-    countdowns, onAddCountdown: handleAddCountdown, onDeleteCountdown: handleDeleteCountdown,
+    countdowns, onAddCountdown: handleAddCountdown, onDeleteCountdown: handleDeleteCountdown, onTogglePinCountdown: handleTogglePinCountdown,
     householdIdProp: householdId, currentWeekStart,
   }
 
