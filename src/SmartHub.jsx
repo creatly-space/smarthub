@@ -405,7 +405,9 @@ function CalendarWidget({ events, persons, fill, compact, large, onDayClick }) {
 
 // Globalt event-modal som kan öppnas från Hem-vyn (eller var som helst).
 // Bottom-sheet style — täcker över hela viewporten.
-function AddEventModal({ open, prefillDate, persons, onClose, onSave }) {
+// Modal för att skapa ELLER redigera event. Skicka editEvent (objekt) för redigeringsläge.
+function AddEventModal({ open, prefillDate, editEvent, persons, onClose, onSave, onUpdate, onDelete }) {
+  const isEdit = !!editEvent
   const [title, setTitle] = useState("")
   const [date, setDate] = useState(fmtDate(new Date()))
   const [time, setTime] = useState("12:00")
@@ -413,20 +415,42 @@ function AddEventModal({ open, prefillDate, persons, onClose, onSave }) {
   const [personIdx, setPersonIdx] = useState(0)
   const [shared, setShared] = useState(true)
   const [notify, setNotify] = useState(true)
-  const [recurrence, setRecurrence] = useState(null) // null | "daily" | "weekdays" | "weekly" | "monthly" | "yearly"
-  const [recurUntil, setRecurUntil] = useState("") // tom = för alltid
+  const [reminderMinutes, setReminderMinutes] = useState(60) // 60 = 1 timme innan
+  const [recurrence, setRecurrence] = useState(null)
+  const [recurUntil, setRecurUntil] = useState("")
 
-  // Prefilla datum när modalen öppnas
+  // Prefilla från editEvent eller prefillDate när modalen öppnas
   useEffect(() => {
-    if (open) {
-      setDate(prefillDate ? fmtDate(prefillDate) : fmtDate(new Date()))
+    if (!open) return
+    if (editEvent) {
+      // Redigeringsläge: ladda värden från eventet
+      const start = new Date(editEvent.start_time)
+      const end = new Date(editEvent.end_time)
+      setTitle(editEvent.title || "")
+      setDate(fmtDate(start))
+      setTime(`${String(start.getHours()).padStart(2, "0")}:${String(start.getMinutes()).padStart(2, "0")}`)
+      setEndTime(`${String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")}`)
+      const matchedPerson = persons.findIndex(p => p.user_id === editEvent.created_by)
+      setPersonIdx(matchedPerson >= 0 ? matchedPerson : 0)
+      setShared(editEvent.shared !== false)
+      setReminderMinutes(editEvent.reminder_minutes ?? null)
+      setNotify(editEvent.reminder_minutes != null)
+      setRecurrence(editEvent.recurrence_rule?.freq || null)
+      setRecurUntil(editEvent.recurrence_rule?.until || "")
+    } else {
+      // Nytt event-läge
       setTitle("")
+      setDate(prefillDate ? fmtDate(prefillDate) : fmtDate(new Date()))
       setTime("12:00")
       setEndTime("13:00")
+      setPersonIdx(0)
+      setShared(true)
+      setNotify(true)
+      setReminderMinutes(60)
       setRecurrence(null)
       setRecurUntil("")
     }
-  }, [open, prefillDate])
+  }, [open, prefillDate, editEvent, persons])
 
   if (!open) return null
 
@@ -435,15 +459,32 @@ function AddEventModal({ open, prefillDate, persons, onClose, onSave }) {
     const recurrence_rule = recurrence
       ? (recurUntil ? { freq: recurrence, until: recurUntil } : { freq: recurrence })
       : null
-    onSave({
+    const payload = {
       title: title.trim(),
       start_time: date + "T" + time + ":00",
       end_time: date + "T" + endTime + ":00",
-      location: null,
+      location: editEvent?.location || null,
       color: persons[personIdx]?.color || ACCENT.event,
       shared,
+      reminder_minutes: notify ? reminderMinutes : null,
       recurrence_rule,
-    })
+    }
+    if (isEdit) {
+      // Vid redigering av återkommande: uppdatera master (hela serien)
+      const realId = editEvent.master_id || editEvent.id
+      onUpdate(realId, payload)
+    } else {
+      onSave(payload)
+    }
+    onClose()
+  }
+
+  function handleDelete() {
+    if (!editEvent) return
+    const isRecurring = !!editEvent.master_id || !!editEvent.recurrence_rule
+    if (isRecurring && !confirm("Detta är en återkommande händelse. Tar du bort den raderas hela serien. Fortsätta?")) return
+    if (!isRecurring && !confirm("Ta bort denna händelse?")) return
+    onDelete(editEvent.id)
     onClose()
   }
 
@@ -461,7 +502,9 @@ function AddEventModal({ open, prefillDate, persons, onClose, onSave }) {
         boxShadow: "0 -4px 24px rgba(0,0,0,0.15)",
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 18, fontWeight: 700, color: t.text }}>Ny händelse</span>
+          <span style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 18, fontWeight: 700, color: t.text }}>
+            {isEdit ? "Redigera händelse" : "Ny händelse"}
+          </span>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}>
             <X size={20} color={t.textSec} />
           </button>
@@ -491,11 +534,33 @@ function AddEventModal({ open, prefillDate, persons, onClose, onSave }) {
           </div>
           <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 600, color: shared ? t.text : t.textSec }}>{shared ? "Delad med hushållet" : "Bara för mig"}</span>
         </div>
-        <div onClick={() => setNotify(n => !n)} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "4px 0" }}>
-          <div style={{ width: 36, height: 20, borderRadius: 10, background: notify ? ACCENT.calendar : t.textMuted, padding: 2, display: "flex", alignItems: "center" }}>
-            <div style={{ width: 16, height: 16, borderRadius: 8, background: "#fff", transition: "transform 0.2s", transform: notify ? "translateX(16px)" : "translateX(0)" }} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div onClick={() => setNotify(n => !n)} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "4px 0" }}>
+            <div style={{ width: 36, height: 20, borderRadius: 10, background: notify ? ACCENT.calendar : t.textMuted, padding: 2, display: "flex", alignItems: "center" }}>
+              <div style={{ width: 16, height: 16, borderRadius: 8, background: "#fff", transition: "transform 0.2s", transform: notify ? "translateX(16px)" : "translateX(0)" }} />
+            </div>
+            <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 600, color: notify ? t.text : t.textSec }}>Påminnelse</span>
           </div>
-          <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 600, color: notify ? t.text : t.textSec }}>Påminnelse</span>
+          {notify && (
+            <select
+              value={reminderMinutes ?? 60}
+              onChange={e => setReminderMinutes(parseInt(e.target.value))}
+              style={{ ...inputStyle, fontSize: 13 }}
+            >
+              <option value={5}>5 min innan</option>
+              <option value={15}>15 min innan</option>
+              <option value={30}>30 min innan</option>
+              <option value={60}>1 timme innan</option>
+              <option value={120}>2 timmar innan</option>
+              <option value={1440}>1 dag innan</option>
+              <option value={2880}>2 dagar innan</option>
+            </select>
+          )}
+          {notify && (
+            <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 10, color: t.textMuted, fontStyle: "italic" }}>
+              Sparas på eventet — utgående notiser kommer i framtida version
+            </span>
+          )}
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 4 }}>
@@ -524,9 +589,14 @@ function AddEventModal({ open, prefillDate, persons, onClose, onSave }) {
           )}
         </div>
 
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
-          <Btn outline small onClick={onClose}><X size={12} /> Avbryt</Btn>
-          <Btn small color={ACCENT.calendar} onClick={submit} disabled={!title.trim()}><Check size={12} /> Spara</Btn>
+        <div style={{ display: "flex", gap: 8, justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+          {isEdit ? (
+            <Btn small outline color="#dc2626" onClick={handleDelete}><Trash2 size={12} /> Ta bort</Btn>
+          ) : <span />}
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn outline small onClick={onClose}><X size={12} /> Avbryt</Btn>
+            <Btn small color={ACCENT.calendar} onClick={submit} disabled={!title.trim()}><Check size={12} /> {isEdit ? "Uppdatera" : "Spara"}</Btn>
+          </div>
         </div>
       </div>
     </div>
@@ -534,7 +604,7 @@ function AddEventModal({ open, prefillDate, persons, onClose, onSave }) {
 }
 
 // Modal som visar alla händelser för en specifik dag, med möjlighet att lägga till ny.
-function DayModal({ open, date, events, persons, onClose, onAddEvent, onDeleteEvent }) {
+function DayModal({ open, date, events, persons, onClose, onAddEvent, onEditEvent, onDeleteEvent }) {
   if (!open || !date) return null
   const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate())
   const dayEnd = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59)
@@ -591,17 +661,23 @@ function DayModal({ open, date, events, persons, onClose, onAddEvent, onDeleteEv
                 return (
                   <div key={ev.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", background: `${p.color}08`, borderRadius: 10, border: `1px solid ${p.color}15` }}>
                     <div style={{ width: 4, height: 36, borderRadius: 2, background: p.color, flexShrink: 0 }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ flex: 1, minWidth: 0, cursor: onEditEvent ? "pointer" : "default" }} onClick={() => onEditEvent && onEditEvent(ev)}>
                       <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 12, color: t.textMuted, display: "flex", alignItems: "center", gap: 4 }}>
                         {fmtTime(ev.start_time)}
                         {ev.end_time && ev.end_time !== ev.start_time && ` – ${fmtTime(ev.end_time)}`}
                         {isRecurring && <Repeat size={10} color={t.textMuted} />}
+                        {ev.reminder_minutes != null && <span title="Påminnelse satt" style={{ fontSize: 10 }}>🔔</span>}
                       </div>
                       <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 14, color: t.text, fontWeight: 600 }}>{ev.title}</div>
                       {p.name && <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: p.color, fontWeight: 700, marginTop: 2 }}>{p.name}</div>}
                       {ev.location && <div style={{ fontSize: 11, color: t.textMuted, marginTop: 2, display: "flex", alignItems: "center", gap: 3 }}><MapPin size={10} /> {ev.location}</div>}
                     </div>
-                    <button onClick={() => handleDelete(ev)} style={{ background: "none", border: "none", cursor: "pointer", color: t.textMuted, padding: 4 }}>
+                    {onEditEvent && (
+                      <button onClick={() => onEditEvent(ev)} style={{ background: "none", border: "none", cursor: "pointer", color: t.textMuted, padding: 4 }} title="Redigera">
+                        <Edit3 size={16} />
+                      </button>
+                    )}
+                    <button onClick={() => handleDelete(ev)} style={{ background: "none", border: "none", cursor: "pointer", color: t.textMuted, padding: 4 }} title="Ta bort">
                       <X size={16} />
                     </button>
                   </div>
@@ -2155,10 +2231,11 @@ export default function SmartHub({ session, household }) {
   const [weather, setWeather] = useState(null)
 
   // ── v11 stub state (no Supabase persistence yet — see MIGRATIONS.sql) ──
-  // ── Lifted add-event modal (öppnas från Hem-vyns kalender) ──
-  const [addEventModal, setAddEventModal] = useState({ open: false, date: null })
-  function openAddEvent(date) { setAddEventModal({ open: true, date }) }
-  function closeAddEvent() { setAddEventModal({ open: false, date: null }) }
+  // ── Event-modal: hanterar både skapa och redigera ──
+  const [eventModal, setEventModal] = useState({ open: false, date: null, editEvent: null })
+  function openAddEvent(date) { setEventModal({ open: true, date, editEvent: null }) }
+  function openEditEvent(ev) { setEventModal({ open: true, date: null, editEvent: ev }) }
+  function closeAddEvent() { setEventModal({ open: false, date: null, editEvent: null }) }
 
   // Day-modal: visar dagens events + knapp för att lägga till ny
   const [dayModal, setDayModal] = useState({ open: false, date: null })
@@ -2508,8 +2585,24 @@ export default function SmartHub({ session, household }) {
       start_time: ev.start_time, end_time: ev.end_time,
       location: ev.location, color: ev.color, shared: ev.shared,
       recurrence_rule: ev.recurrence_rule || null,
+      reminder_minutes: ev.reminder_minutes ?? null,
       created_by: userId,
     })
+  }
+  async function handleUpdateEvent(id, updates) {
+    // Optimistic UI: uppdatera local state direkt
+    setCalEvents(p => p.map(e => e.id === id ? { ...e, ...updates } : e))
+    const { error } = await supabase.from("calendar_events").update({
+      title: updates.title,
+      start_time: updates.start_time,
+      end_time: updates.end_time,
+      location: updates.location,
+      color: updates.color,
+      shared: updates.shared,
+      recurrence_rule: updates.recurrence_rule,
+      reminder_minutes: updates.reminder_minutes,
+    }).eq("id", id)
+    if (error) console.error("[handleUpdateEvent]", error)
   }
   // Om id är från en återkommande instans (innehåller "_occ_"), ta bort hela serien.
   async function handleDeleteEvent(id) {
@@ -2729,14 +2822,18 @@ export default function SmartHub({ session, household }) {
         persons={persons}
         onClose={closeDayModal}
         onAddEvent={(d) => { closeDayModal(); openAddEvent(d) }}
+        onEditEvent={(ev) => { closeDayModal(); openEditEvent(ev) }}
         onDeleteEvent={handleDeleteEvent}
       />
       <AddEventModal
-        open={addEventModal.open}
-        prefillDate={addEventModal.date}
+        open={eventModal.open}
+        prefillDate={eventModal.date}
+        editEvent={eventModal.editEvent}
         persons={persons}
         onClose={closeAddEvent}
         onSave={handleAddEvent}
+        onUpdate={handleUpdateEvent}
+        onDelete={handleDeleteEvent}
       />
     </>
   )
