@@ -778,6 +778,115 @@ function ActivityFeed({ activity, persons, members, userId, max = 5 }) {
   )
 }
 
+// Visar nedräkningar till framtida händelser (semester, födelsedagar, läkartider)
+function CountdownsCard({ countdowns, onAdd, onDelete }) {
+  const [showAdd, setShowAdd] = useState(false)
+  const [title, setTitle] = useState("")
+  const [date, setDate] = useState("")
+  const [emoji, setEmoji] = useState("")
+  const [color, setColor] = useState(ACCENT.calendar)
+
+  // Filtrera bort passerade (mer än 1 dag sen)
+  const today = new Date()
+  const todayStr = fmtDate(today)
+  const upcoming = countdowns.filter(c => c.target_date >= todayStr).slice(0, 5)
+
+  function daysUntil(dateStr) {
+    const target = new Date(dateStr + "T00:00:00")
+    const diff = Math.floor((target - new Date(today.getFullYear(), today.getMonth(), today.getDate())) / 86400000)
+    return diff
+  }
+
+  function submit() {
+    if (!title.trim() || !date) return
+    onAdd({ title: title.trim(), target_date: date, color, emoji: emoji.trim() || null })
+    setTitle(""); setDate(""); setEmoji(""); setColor(ACCENT.calendar); setShowAdd(false)
+  }
+
+  if (upcoming.length === 0 && !showAdd) {
+    return (
+      <Card>
+        <div style={{ padding: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <Label color={ACCENT.calendar} icon={CalendarDays}>Nedräkningar</Label>
+          <Btn small outline onClick={() => setShowAdd(true)}><Plus size={12} /> Lägg till</Btn>
+        </div>
+      </Card>
+    )
+  }
+
+  return (
+    <Card>
+      <div style={{ padding: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <Label color={ACCENT.calendar} icon={CalendarDays}>Nedräkningar</Label>
+          {!showAdd && <Btn small outline onClick={() => setShowAdd(true)}><Plus size={12} /> Lägg till</Btn>}
+        </div>
+
+        {showAdd && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12, padding: 10, background: t.inputBg, borderRadius: 10 }}>
+            <div style={{ display: "flex", gap: 6 }}>
+              <input value={emoji} onChange={e => setEmoji(e.target.value.slice(0, 2))} placeholder="🏖️" style={{ ...inputStyle, fontSize: 16, width: 50, textAlign: "center", padding: "8px 4px" }} />
+              <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Vad? T.ex. Mallorca" style={{ ...inputStyle, fontSize: 13, flex: 1 }} autoFocus />
+            </div>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ ...inputStyle, fontSize: 13 }} />
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+              {LIST_COLORS.map(c => (
+                <button key={c} onClick={() => setColor(c)} style={{
+                  width: 24, height: 24, borderRadius: 12, background: c,
+                  border: color === c ? `3px solid ${t.text}` : "3px solid transparent",
+                  cursor: "pointer", padding: 0,
+                }} />
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <Btn small outline onClick={() => { setShowAdd(false); setTitle(""); setDate("") }}><X size={12} /> Avbryt</Btn>
+              <Btn small color={ACCENT.calendar} onClick={submit} disabled={!title.trim() || !date}><Check size={12} /> Spara</Btn>
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {upcoming.map(c => {
+            const days = daysUntil(c.target_date)
+            const isToday = days === 0
+            const isSoon = days <= 7
+            return (
+              <div key={c.id} style={{
+                display: "flex", alignItems: "center", gap: 10,
+                padding: "10px 12px", borderRadius: 10,
+                background: `${c.color}08`, border: `1px solid ${c.color}20`,
+              }}>
+                {c.emoji && <div style={{ fontSize: 24, flexShrink: 0 }}>{c.emoji}</div>}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 700, color: t.text }}>{c.title}</div>
+                  <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textMuted, marginTop: 2 }}>
+                    {new Date(c.target_date + "T00:00:00").toLocaleDateString("sv-SE", { weekday: "long", day: "numeric", month: "long" })}
+                  </div>
+                </div>
+                <div style={{
+                  textAlign: "right",
+                  fontFamily: "Comfortaa, sans-serif",
+                  flexShrink: 0,
+                }}>
+                  <div style={{
+                    fontSize: isToday ? 18 : 22, fontWeight: 700,
+                    color: isToday ? "#dc2626" : isSoon ? c.color : t.text,
+                    lineHeight: 1,
+                  }}>{isToday ? "Idag!" : days}</div>
+                  {!isToday && <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 10, color: t.textMuted, marginTop: 2 }}>{days === 1 ? "dag" : "dagar"}</div>}
+                </div>
+                <button onClick={() => onDelete(c.id)} style={{ background: "none", border: "none", cursor: "pointer", color: t.textMuted, padding: 4, flexShrink: 0 }}>
+                  <X size={14} />
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </Card>
+  )
+}
+
 // Notifikationsklocka — visar antal aktiviteter som hänt sen senast användaren tittade.
 // "Senast tittat"-tidsstämpel sparas i localStorage per user.
 function NotificationBell({ activity, persons, members, userId, onOpenFeed }) {
@@ -1739,7 +1848,104 @@ function MealCard({ fill, mealsByWeekday, mealTagsLocal, onSetMealText, onSetMea
   )
 }
 
-function MealTab({ isMobile, mealsByWeekday, mealTagsLocal, onSetMealText, onSetMealTag, foodPrefs, setFoodPrefs, onAiGenerate }) {
+// Hjälpare: ISO veckonummer för ett datum
+function isoWeekNumber(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+  const dayNum = d.getUTCDay() || 7
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum)
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7)
+}
+
+// Mathistorik — bläddra bakåt i tiden vecka för vecka
+function MealHistory({ householdId, currentWeekStart }) {
+  const [weekOffset, setWeekOffset] = useState(-1) // -1 = förra veckan
+  const [meals, setMeals] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  // Räkna fram week_start_date för aktuellt offset
+  const weekStart = useMemo(() => {
+    const cur = new Date(currentWeekStart + "T00:00:00")
+    const d = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() + weekOffset * 7)
+    return fmtDate(d)
+  }, [currentWeekStart, weekOffset])
+
+  useEffect(() => {
+    if (!householdId) return
+    let cancelled = false
+    setLoading(true)
+    supabase.from("meals").select("*").eq("household_id", householdId).eq("week_start_date", weekStart)
+      .then(({ data }) => {
+        if (cancelled) return
+        setMeals(data || [])
+        setLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [householdId, weekStart])
+
+  const weekStartDate = new Date(weekStart + "T00:00:00")
+  const weekEndDate = new Date(weekStartDate.getFullYear(), weekStartDate.getMonth(), weekStartDate.getDate() + 6)
+  const weekLabel = `${weekStartDate.getDate()} ${MONTHS_SHORT[weekStartDate.getMonth()]} – ${weekEndDate.getDate()} ${MONTHS_SHORT[weekEndDate.getMonth()]}`
+  const weekNum = isoWeekNumber(weekStartDate)
+  const mealsByDay = {}
+  meals.forEach(m => { mealsByDay[m.weekday] = m })
+
+  return (
+    <Card>
+      <div style={{ padding: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <Label color={t.textSec} icon={UtensilsCrossed}>Mathistorik</Label>
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <button onClick={() => setWeekOffset(o => o - 1)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: t.textMuted }}>
+              <ChevronLeft size={16} />
+            </button>
+            <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, fontWeight: 700, color: t.text, minWidth: 100, textAlign: "center" }}>
+              Vecka {weekNum}
+            </span>
+            <button onClick={() => setWeekOffset(o => Math.min(o + 1, -1))} disabled={weekOffset >= -1} style={{
+              background: "none", border: "none", cursor: weekOffset >= -1 ? "default" : "pointer",
+              padding: 4, color: weekOffset >= -1 ? t.textMuted : t.textSec, opacity: weekOffset >= -1 ? 0.3 : 1,
+            }}>
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+        <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textMuted, marginBottom: 8 }}>
+          {weekLabel}
+        </div>
+
+        {loading ? (
+          <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textMuted, textAlign: "center", padding: "10px 0" }}>Laddar...</div>
+        ) : meals.length === 0 ? (
+          <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textMuted, fontStyle: "italic", textAlign: "center", padding: "10px 0" }}>
+            Ingen matsedel sparad för denna vecka
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {DAYS.map((day, i) => {
+              const wd = i + 1
+              const meal = mealsByDay[wd]
+              const tag = meal?.tag ? MEAL_TAGS.find(tg => tg.id === meal.tag) : null
+              return (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 8px", borderRadius: 6 }}>
+                  <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textSec, minWidth: 70 }}>{day}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, justifyContent: "flex-end", minWidth: 0 }}>
+                    {tag && <span style={{ fontSize: 10, fontWeight: 700, color: tag.color, background: `${tag.color}15`, padding: "1px 7px", borderRadius: 6, flexShrink: 0 }}>{tag.icon} {tag.label}</span>}
+                    <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: meal?.meal_text ? t.text : t.textMuted, fontStyle: meal?.meal_text ? "normal" : "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {meal?.meal_text || "—"}
+                    </span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </Card>
+  )
+}
+
+function MealTab({ isMobile, mealsByWeekday, mealTagsLocal, onSetMealText, onSetMealTag, foodPrefs, setFoodPrefs, onAiGenerate, householdId, currentWeekStart }) {
   const [showAI, setShowAI] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [aiError, setAiError] = useState(null)
@@ -1829,6 +2035,10 @@ function MealTab({ isMobile, mealsByWeekday, mealTagsLocal, onSetMealText, onSet
         onSetMealText={onSetMealText}
         onSetMealTag={onSetMealTag}
       />
+
+      <div style={{ marginTop: 12 }}>
+        <MealHistory householdId={householdId} currentWeekStart={currentWeekStart} />
+      </div>
     </div>
   )
 }
@@ -2121,12 +2331,15 @@ function normalizeTvWidget(w) {
   }
 }
 
-function TvEditorSection({ onBack, isMobile, tvData, tvSlots, onSaveTvSlots }) {
+function TvEditorSection({ onBack, isMobile, tvData, tvSlots, onSaveTvSlots, tvPhotoUrl, onSaveTvPhoto }) {
   const [slots, setSlots] = useState(() => ({ ...DEFAULT_TV_SLOTS, ...(tvSlots || {}) }))
-  const [pickerOpen, setPickerOpen] = useState(null) // slotId being edited
+  const [pickerOpen, setPickerOpen] = useState(null)
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState(null)
+  const [photoInput, setPhotoInput] = useState(tvPhotoUrl || "")
   const scale = isMobile ? 0.45 : 0.55
+
+  useEffect(() => { setPhotoInput(tvPhotoUrl || "") }, [tvPhotoUrl])
 
   // Synka in när tvSlots från DB ändras (t.ex. realtime från annan enhet)
   useEffect(() => {
@@ -2187,6 +2400,32 @@ function TvEditorSection({ onBack, isMobile, tvData, tvSlots, onSaveTvSlots }) {
       <div style={{ textAlign: "center", marginBottom: 16, fontFamily: "Nunito, sans-serif", fontSize: 12, color: savedAt ? ACCENT.todo : t.textMuted, transition: "color 0.2s" }}>
         {saving ? "Sparar..." : savedAt ? "✓ Sparat — TV:n uppdateras automatiskt" : "Tryck på en widget i preview:n för att byta"}
       </div>
+
+      <Card style={{ marginBottom: 12 }}>
+        <div style={{ padding: 14 }}>
+          <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 6 }}>📸 Foto-header på TV:n</div>
+          <p style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textSec, margin: "0 0 10px" }}>
+            Klistra in en bild-URL — visas som banner högst upp på TV:n. Bra för familjebild, semesterminne eller stämningsbild.
+          </p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <input value={photoInput} onChange={e => setPhotoInput(e.target.value)} placeholder="https://exempel.com/familjebild.jpg" style={{ ...inputStyle, fontSize: 13, flex: 1, minWidth: 200 }} />
+            <Btn small color={ACCENT.calendar} onClick={() => onSaveTvPhoto(photoInput.trim() || null)}>
+              <Check size={12} /> Spara
+            </Btn>
+            {tvPhotoUrl && (
+              <Btn small outline color="#dc2626" onClick={() => { setPhotoInput(""); onSaveTvPhoto(null) }}>
+                <X size={12} /> Ta bort
+              </Btn>
+            )}
+          </div>
+          {tvPhotoUrl && (
+            <div style={{ marginTop: 10, height: 60, borderRadius: 8, backgroundImage: `url("${tvPhotoUrl}")`, backgroundSize: "cover", backgroundPosition: "center", border: `1px solid ${t.cardBorder}` }} />
+          )}
+          <p style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textMuted, margin: "8px 0 0" }}>
+            <strong>Tips:</strong> Ladda upp till imgur.com eller liknande och klistra in direktlänken till bilden (.jpg/.png).
+          </p>
+        </div>
+      </Card>
 
       {pickerOpen && (
         <div onClick={() => setPickerOpen(null)} style={{
@@ -2253,7 +2492,7 @@ function AccountSection({ onBack }) {
   )
 }
 
-function SettingsTab({ isMobile, session, household, members, foodPrefs, setFoodPrefs, onCreateInvite, tvData, tvSlots, onSaveTvSlots, userId }) {
+function SettingsTab({ isMobile, session, household, members, foodPrefs, setFoodPrefs, onCreateInvite, tvData, tvSlots, onSaveTvSlots, tvPhotoUrl, onSaveTvPhoto, userId }) {
   const [activeSection, setActiveSection] = useState(null)
   const sections = [
     { id: "profile", icon: User, label: "Profil", desc: "Namn, profilbild" },
@@ -2262,7 +2501,7 @@ function SettingsTab({ isMobile, session, household, members, foodPrefs, setFood
     { id: "food", icon: UtensilsCrossed, label: "Matpreferenser", desc: "Gillar, gillar inte, budget" },
     { id: "account", icon: LogOut, label: "Konto", desc: "Logga ut" },
   ]
-  if (activeSection === "tv") return <TvEditorSection onBack={() => setActiveSection(null)} isMobile={isMobile} tvData={tvData} tvSlots={tvSlots} onSaveTvSlots={onSaveTvSlots} />
+  if (activeSection === "tv") return <TvEditorSection onBack={() => setActiveSection(null)} isMobile={isMobile} tvData={tvData} tvSlots={tvSlots} onSaveTvSlots={onSaveTvSlots} tvPhotoUrl={tvPhotoUrl} onSaveTvPhoto={onSaveTvPhoto} />
   if (activeSection === "profile") return <ProfileSection onBack={() => setActiveSection(null)} session={session} />
   if (activeSection === "household") return <HouseholdSection onBack={() => setActiveSection(null)} household={household} members={members} userId={userId} onCreateInvite={onCreateInvite} />
   if (activeSection === "food") return <FoodPrefsSection onBack={() => setActiveSection(null)} foodPrefs={foodPrefs} setFoodPrefs={setFoodPrefs} />
@@ -2488,8 +2727,10 @@ function TabContent({
   foodPrefs, setFoodPrefs, onAiGenerate,
   // settings
   session, household, members, onCreateInvite, tvData, tvSlots, onSaveTvSlots,
-  // activity
-  activity,
+  tvPhotoUrl, onSaveTvPhoto,
+  // activity + countdowns + meal history
+  activity, countdowns, onAddCountdown, onDeleteCountdown,
+  householdIdProp, currentWeekStart,
 }) {
   const pad = isMobile ? "16px 16px 16px" : "24px 28px"
   if (tab === "hem") {
@@ -2524,6 +2765,7 @@ function TabContent({
             <TodoCard pinnedList={pinnedList} onToggle={onToggleItem} />
             <MealCard mealsByWeekday={mealsByWeekday} mealTagsLocal={mealTagsLocal} onSetMealText={onSetMealText} onSetMealTag={onSetMealTag} />
           </div>
+          <CountdownsCard countdowns={countdowns} onAdd={onAddCountdown} onDelete={onDeleteCountdown} />
           <ActivityFeed activity={activity} persons={persons} members={members} userId={userId} max={5} />
         </div>
       </div>
@@ -2563,13 +2805,14 @@ function TabContent({
       </div>
     )
   }
-  if (tab === "mat") return <div style={{ padding: pad }}><MealTab isMobile={isMobile} mealsByWeekday={mealsByWeekday} mealTagsLocal={mealTagsLocal} onSetMealText={onSetMealText} onSetMealTag={onSetMealTag} foodPrefs={foodPrefs} setFoodPrefs={setFoodPrefs} onAiGenerate={onAiGenerate} /></div>
+  if (tab === "mat") return <div style={{ padding: pad }}><MealTab isMobile={isMobile} mealsByWeekday={mealsByWeekday} mealTagsLocal={mealTagsLocal} onSetMealText={onSetMealText} onSetMealTag={onSetMealTag} foodPrefs={foodPrefs} setFoodPrefs={setFoodPrefs} onAiGenerate={onAiGenerate} householdId={householdIdProp} currentWeekStart={currentWeekStart} /></div>
   if (tab === "mer") return (
     <div style={{ padding: pad }}>
       <SettingsTab isMobile={isMobile} session={session} household={household} members={members}
         foodPrefs={foodPrefs} setFoodPrefs={setFoodPrefs}
         onCreateInvite={onCreateInvite}
         tvData={tvData} tvSlots={tvSlots} onSaveTvSlots={onSaveTvSlots}
+        tvPhotoUrl={tvPhotoUrl} onSaveTvPhoto={onSaveTvPhoto}
         userId={userId} />
     </div>
   )
@@ -2712,7 +2955,7 @@ function TvEventsCard({ events, persons }) {
 // `slots` styr vilka widgets som syns i de 3 slottarna (main, bottomLeft, bottomRight).
 // `slotOverlay(slotId)` är en valfri render prop som lägger en klickbar overlay över varje slot
 // (används av editor:n för att kunna byta widget).
-function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, weather, slots, slotOverlay, onDayClick }) {
+function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, weather, slots, slotOverlay, onDayClick, photoUrl }) {
   const s = { ...DEFAULT_TV_SLOTS, ...(slots || {}) }
   const widgetProps = { persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, onDayClick }
   return (
@@ -2722,6 +2965,20 @@ function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWe
       display: "flex", flexDirection: "column", overflow: "hidden",
       boxSizing: "border-box",
     }}>
+      {photoUrl && (
+        <div style={{
+          width: "100%", height: 100, flexShrink: 0,
+          backgroundImage: `url("${photoUrl}")`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          position: "relative",
+        }}>
+          <div style={{
+            position: "absolute", inset: 0,
+            background: "linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(240,242,245,0.85) 100%)",
+          }} />
+        </div>
+      )}
       <div style={{ padding: "24px 20px 12px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <ClockDisplay size="huge" />
         <div style={{ textAlign: "right" }}>
@@ -2763,16 +3020,44 @@ function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWe
   )
 }
 
+// Bestämmer om det är "natt" — dimmar TV-skärmen mellan 20:00 och 07:00
+function useIsNightTime() {
+  const [isNight, setIsNight] = useState(() => {
+    const h = new Date().getHours()
+    return h >= 20 || h < 7
+  })
+  useEffect(() => {
+    const i = setInterval(() => {
+      const h = new Date().getHours()
+      setIsNight(h >= 20 || h < 7)
+    }, 60000) // kollar varje minut
+    return () => clearInterval(i)
+  }, [])
+  return isNight
+}
+
 // Riktig TV-vy (visas på 1080x1920-skärm via zoom:2 på 540x960 logiskt).
 function TvLayout(props) {
+  const isNight = useIsNightTime()
   return (
     <div style={{
       width: 540, height: 960,
       position: "fixed", top: 0, left: 0, overflow: "hidden",
       zoom: 2, transformOrigin: "top left",
+      filter: isNight ? "brightness(0.45) contrast(0.95)" : "none",
+      transition: "filter 0.6s ease",
     }}>
       <style>{"html,body{margin:0!important;padding:0!important;overflow:hidden!important;background:#000!important}"}</style>
       <TvViewContent {...props} />
+      {isNight && (
+        <div style={{
+          position: "absolute", top: 8, right: 8, zIndex: 50,
+          background: "rgba(0,0,0,0.3)", borderRadius: 8,
+          padding: "2px 8px", display: "flex", alignItems: "center", gap: 4,
+          color: "rgba(255,255,255,0.5)", fontFamily: "Nunito, sans-serif",
+          fontSize: 9, fontWeight: 700,
+        }}>🌙 Nattläge</div>
+      )}
     </div>
   )
 }
@@ -2818,8 +3103,10 @@ export default function SmartHub({ session, household }) {
   const [meals, setMeals] = useState([])
   const [tvWidgets, setTvWidgets] = useState(null)
   const [tvSlots, setTvSlots] = useState(null) // {main, bottomLeft, bottomRight}
+  const [tvPhotoUrl, setTvPhotoUrl] = useState(null)
   const [members, setMembers] = useState([])
   const [activity, setActivity] = useState([]) // senaste aktiviteter i hushållet
+  const [countdowns, setCountdowns] = useState([])
   const [weather, setWeather] = useState(null)
 
   // ── v11 stub state (no Supabase persistence yet — see MIGRATIONS.sql) ──
@@ -2870,10 +3157,8 @@ export default function SmartHub({ session, household }) {
     if (!householdId) return
     let cancelled = false
     async function f() {
-      // tv_layouts har `widgets` (legacy v10) och `slots` (v11). Försök läsa båda; om
-      // slots-kolumnen inte finns ännu, fall tillbaka till bara widgets + localStorage.
       let data = null
-      const r1 = await supabase.from("tv_layouts").select("widgets,slots").eq("household_id", householdId).maybeSingle()
+      const r1 = await supabase.from("tv_layouts").select("widgets,slots,photo_url").eq("household_id", householdId).maybeSingle()
       if (!r1.error) {
         data = r1.data
       } else {
@@ -2882,10 +3167,10 @@ export default function SmartHub({ session, household }) {
       }
       if (cancelled) return
       if (data?.widgets) setTvWidgets(data.widgets)
+      if (data?.photo_url !== undefined) setTvPhotoUrl(data.photo_url)
       if (data?.slots) {
         setTvSlots(data.slots)
       } else if (typeof window !== "undefined") {
-        // Fallback om slots inte finns i DB ännu
         try {
           const stored = localStorage.getItem("smarthub:tvSlots:" + householdId)
           if (stored) setTvSlots(JSON.parse(stored))
@@ -2898,6 +3183,7 @@ export default function SmartHub({ session, household }) {
     }, p => {
       if (p.new?.widgets) setTvWidgets(p.new.widgets)
       if (p.new?.slots) setTvSlots(p.new.slots)
+      if (p.new && "photo_url" in p.new) setTvPhotoUrl(p.new.photo_url)
     }).subscribe()
     return () => { cancelled = true; supabase.removeChannel(ch) }
   }, [householdId])
@@ -3007,6 +3293,30 @@ export default function SmartHub({ session, household }) {
     supabase.from("household_members").select("user_id,role,joined_at").eq("household_id", householdId)
       .then(({ data }) => { if (!cancelled && data) setMembers(data) })
     return () => { cancelled = true }
+  }, [householdId])
+
+  // ── Load + subscribe: countdowns ──
+  useEffect(() => {
+    if (!householdId) return
+    let cancelled = false
+    async function load() {
+      const { data } = await supabase.from("countdowns")
+        .select("*").eq("household_id", householdId)
+        .order("target_date", { ascending: true })
+      if (!cancelled && data) setCountdowns(data)
+    }
+    load()
+    const ch = supabase.channel("countdowns:" + householdId).on("postgres_changes", {
+      event: "*", schema: "public", table: "countdowns", filter: "household_id=eq." + householdId,
+    }, p => {
+      setCountdowns(prev => {
+        if (p.eventType === "INSERT") return prev.some(c => c.id === p.new.id) ? prev : [...prev, p.new].sort((a, b) => a.target_date.localeCompare(b.target_date))
+        if (p.eventType === "UPDATE") return prev.map(c => c.id === p.new.id ? p.new : c)
+        if (p.eventType === "DELETE") return prev.filter(c => c.id !== p.old.id)
+        return prev
+      })
+    }).subscribe()
+    return () => { cancelled = true; supabase.removeChannel(ch) }
   }, [householdId])
 
   // ── Load + subscribe: activity_log ──
@@ -3285,6 +3595,25 @@ export default function SmartHub({ session, household }) {
       household_id: householdId, widgets, updated_at: new Date().toISOString(),
     }, { onConflict: "household_id" })
   }
+  async function handleAddCountdown(c) {
+    const { data, error } = await supabase.from("countdowns").insert({
+      household_id: householdId, title: c.title, target_date: c.target_date,
+      color: c.color || ACCENT.calendar, emoji: c.emoji || null, created_by: userId,
+    }).select().single()
+    if (!error && data) logActivity("add_countdown", "countdown", data.id, `lade till nedräkningen "${c.title}"`)
+  }
+  async function handleDeleteCountdown(id) {
+    setCountdowns(p => p.filter(c => c.id !== id))
+    await supabase.from("countdowns").delete().eq("id", id)
+  }
+  async function handleSaveTvPhoto(url) {
+    setTvPhotoUrl(url)
+    if (!householdId) return
+    const { error } = await supabase.from("tv_layouts").upsert({
+      household_id: householdId, photo_url: url, updated_at: new Date().toISOString(),
+    }, { onConflict: "household_id" })
+    if (error) console.warn("[tvPhoto]", error.message)
+  }
   async function handleSaveTvSlots(slots) {
     setTvSlots(slots)
     if (!householdId) return
@@ -3485,6 +3814,7 @@ export default function SmartHub({ session, household }) {
           mealTagsLocal={mealTagsLocal}
           weather={weather}
           slots={tvSlots}
+          photoUrl={tvPhotoUrl}
           onDayClick={openDayModal}
         />
         {liftedModals}
@@ -3518,9 +3848,13 @@ export default function SmartHub({ session, household }) {
       persons, calEvents, pinnedList,
       onToggleItem: handleToggleTodo,
       mealsByWeekday, mealTagsLocal, weather,
+      photoUrl: tvPhotoUrl,
     },
     tvSlots, onSaveTvSlots: handleSaveTvSlots,
+    tvPhotoUrl, onSaveTvPhoto: handleSaveTvPhoto,
     activity,
+    countdowns, onAddCountdown: handleAddCountdown, onDeleteCountdown: handleDeleteCountdown,
+    householdIdProp: householdId, currentWeekStart,
   }
 
   // ─── Mobile view ───
