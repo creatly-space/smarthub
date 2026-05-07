@@ -3241,11 +3241,12 @@ function DesktopSidebar({ tab, setTab, session, weather, household }) {
 
 // TV-widgets som kan placeras i slots
 const TV_SLOT_OPTIONS = [
-  { id: "calendar", label: "Kalender", color: ACCENT.calendar, icon: CalendarDays },
-  { id: "todo",     label: "Att göra", color: ACCENT.todo,     icon: ListChecks },
-  { id: "meal",     label: "Matsedel", color: ACCENT.meal,     icon: UtensilsCrossed },
-  { id: "events",   label: "Dagens händelser", color: ACCENT.event, icon: CalendarDays },
-  { id: "empty",    label: "Tom",      color: t.textMuted,     icon: X },
+  { id: "calendar",  label: "Kalender", color: ACCENT.calendar, icon: CalendarDays },
+  { id: "todo",      label: "Att göra", color: ACCENT.todo,     icon: ListChecks },
+  { id: "meal",      label: "Matsedel", color: ACCENT.meal,     icon: UtensilsCrossed },
+  { id: "events",    label: "Dagens händelser", color: ACCENT.event, icon: CalendarDays },
+  { id: "countdown", label: "Nedräkning", color: "#db2777", icon: Sparkles },
+  { id: "empty",     label: "Tom",      color: t.textMuted,     icon: X },
 ]
 const DEFAULT_TV_SLOTS = { layout: "standard", main: "calendar", bottomLeft: "todo", bottomRight: "meal" }
 const SLOT_LABELS = {
@@ -3319,8 +3320,69 @@ function renderTvSlotWidget(type, p) {
   if (type === "todo")     return <TodoCard pinnedList={p.pinnedList} onToggle={p.onToggleItem} fill />
   if (type === "meal")     return <MealCard fill mealsByWeekday={p.mealsByWeekday} mealTagsLocal={p.mealTagsLocal} onSetMealText={() => {}} onSetMealTag={() => {}} />
   if (type === "events")   return <TvEventsCard events={p.calEvents} persons={p.persons} />
+  if (type === "countdown") return <TvCountdownCard countdowns={p.countdowns} />
   if (type === "empty")    return <div style={{ flex: 1, background: t.inputBg, borderRadius: 14, border: `1px dashed ${t.cardBorder}` }} />
   return null
+}
+
+// Stor kvadratisk countdown-widget för TV-vyn — visar pinned countdown med fokus på siffran
+function TvCountdownCard({ countdowns }) {
+  const today = new Date()
+  const todayStr = fmtDate(today)
+  const upcoming = (countdowns || []).filter(c => c.target_date >= todayStr).sort((a, b) => a.target_date.localeCompare(b.target_date))
+  const c = upcoming.find(x => x.pinned) || upcoming[0]
+
+  if (!c) {
+    return (
+      <Card accent="#db2777" style={{ flex: 1, minHeight: 0 }}>
+        <div style={{ padding: "14px 16px", flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, minHeight: 0 }}>
+          <div style={{ fontSize: 28 }}>🎯</div>
+          <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textMuted, textAlign: "center" }}>
+            Inga nedräkningar
+          </div>
+        </div>
+      </Card>
+    )
+  }
+
+  const days = daysUntilDate(c.target_date)
+  const isToday = days === 0
+  const dateStr = new Date(c.target_date + "T00:00:00").toLocaleDateString("sv-SE", { day: "numeric", month: "short" })
+
+  return (
+    <Card accent={c.color} style={{ flex: 1, minHeight: 0 }}>
+      <div style={{
+        padding: "10px 12px",
+        flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4,
+        background: `linear-gradient(135deg, ${c.color}12, ${c.color}04)`,
+        minHeight: 0, overflow: "hidden",
+      }}>
+        {c.emoji && <div style={{ fontSize: 22, lineHeight: 1 }}>{c.emoji}</div>}
+        {isToday ? (
+          <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 32, fontWeight: 700, color: c.color, lineHeight: 1 }}>IDAG!</div>
+        ) : (
+          <>
+            <div style={{
+              fontFamily: "Comfortaa, sans-serif",
+              fontSize: 60, fontWeight: 700,
+              color: c.color, lineHeight: 0.95, letterSpacing: "-0.04em",
+            }}>{days}</div>
+            <div style={{
+              fontFamily: "Nunito, sans-serif", fontSize: 9, fontWeight: 700,
+              color: c.color, opacity: 0.8,
+              textTransform: "uppercase", letterSpacing: "0.08em",
+            }}>{days === 1 ? "DAG KVAR" : "DAGAR KVAR"}</div>
+          </>
+        )}
+        <div style={{
+          fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 700,
+          color: t.text, marginTop: 4, textAlign: "center",
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%",
+        }}>{c.title}</div>
+        <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 10, color: t.textMuted }}>{dateStr}</div>
+      </div>
+    </Card>
+  )
 }
 
 // Lista över dagens & kommande händelser — TV-vänlig
@@ -3406,10 +3468,10 @@ function TvLayoutGrid({ layoutKey, slots, widgetProps, slotOverlay }) {
   )
 }
 
-function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, weather, slots, slotOverlay, onDayClick, photoUrl }) {
+function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, weather, slots, slotOverlay, onDayClick, photoUrl, countdowns }) {
   const s = { ...DEFAULT_TV_SLOTS, ...(slots || {}) }
   const layoutKey = s.layout || "standard"
-  const widgetProps = { persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, onDayClick }
+  const widgetProps = { persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, onDayClick, countdowns }
   return (
     <div style={{
       width: "100%", height: "100%",
@@ -4298,6 +4360,7 @@ export default function SmartHub({ session, household }) {
           weather={weather}
           slots={tvSlots}
           photoUrl={tvPhotoUrl}
+          countdowns={countdowns}
           onDayClick={openDayModal}
         />
         {liftedModals}
@@ -4332,6 +4395,7 @@ export default function SmartHub({ session, household }) {
       onToggleItem: handleToggleTodo,
       mealsByWeekday, mealTagsLocal, weather,
       photoUrl: tvPhotoUrl,
+      countdowns,
     },
     tvSlots, onSaveTvSlots: handleSaveTvSlots,
     tvPhotoUrl, onSaveTvPhoto: handleSaveTvPhoto, onUploadTvPhoto: handleUploadTvPhoto,
