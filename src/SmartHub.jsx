@@ -18,6 +18,19 @@ const t = {
   line: "rgba(0,0,0,0.04)", inputBg: "rgba(0,0,0,0.03)", inputBorder: "rgba(0,0,0,0.08)",
 }
 const ACCENT = { calendar: "#7c3aed", todo: "#059669", meal: "#d97706", event: "#2563eb", weather: "#0ea5e9" }
+const THEME_PRESETS = [
+  { id: "lila",   label: "Lila",  color: "#7c3aed" },
+  { id: "bla",    label: "Blå",   color: "#2563eb" },
+  { id: "gron",   label: "Grön",  color: "#059669" },
+  { id: "rosa",   label: "Rosa",  color: "#db2777" },
+  { id: "orange", label: "Orange", color: "#ea580c" },
+  { id: "teal",   label: "Teal",  color: "#0d9488" },
+]
+function getThemeColor() {
+  if (typeof window === "undefined") return ACCENT.calendar
+  const saved = localStorage.getItem("smarthub:themeColor")
+  return saved || ACCENT.calendar
+}
 const PERSON_PALETTE = ["#7c3aed", "#db2777", "#0ea5e9", "#059669", "#d97706", "#dc2626"]
 const LIST_COLORS = ["#7c3aed", "#059669", "#d97706", "#2563eb", "#dc2626", "#db2777", "#0d9488", "#ea580c"]
 
@@ -297,12 +310,16 @@ function useNow(intervalMs = 30000) {
 // ════════════════════════════════════════════════
 //  PRIMITIVES (from mockup)
 // ════════════════════════════════════════════════
-function Card({ accent, children, style = {} }) {
+function Card({ accent, children, style = {}, dark }) {
+  const cardBg = dark ? "rgba(255,255,255,0.06)" : t.card
+  const border = dark ? "rgba(255,255,255,0.1)" : t.cardBorder
   return (
     <div style={{
-      background: t.card, borderRadius: 14, border: `1px solid ${t.cardBorder}`,
-      borderTop: accent ? `3px solid ${accent}` : `1px solid ${t.cardBorder}`,
-      boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+      background: cardBg, borderRadius: 14,
+      border: `1px solid ${border}`,
+      borderTop: accent ? `3px solid ${accent}` : `1px solid ${border}`,
+      boxShadow: dark ? "0 2px 8px rgba(0,0,0,0.25)" : "0 1px 3px rgba(0,0,0,0.04)",
+      backdropFilter: dark ? "blur(8px)" : "none",
       display: "flex", flexDirection: "column", overflow: "hidden", ...style,
     }}>{children}</div>
   )
@@ -339,15 +356,15 @@ const inputStyle = {
 // ════════════════════════════════════════════════
 //  CLOCK + WEATHER
 // ════════════════════════════════════════════════
-function ClockDisplay({ size = "large" }) {
+function ClockDisplay({ size = "large", textColor, secColor }) {
   const now = useNow(1000)
   const time = now.toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" })
   const date = now.toLocaleDateString("sv-SE", { weekday: "long", day: "numeric", month: "long" })
   const sizes = { huge: 96, large: 72, medium: 40, small: 32, tiny: 22 }
   return (
     <div style={{ textAlign: size === "large" || size === "huge" ? "center" : "left" }}>
-      <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: sizes[size] || 32, fontWeight: 300, color: t.text, letterSpacing: "-0.02em", lineHeight: 1 }}>{time}</div>
-      <div style={{ fontFamily: "Nunito, sans-serif", fontSize: size === "huge" ? 18 : size === "large" ? 16 : size === "tiny" ? 11 : 13, color: t.textSec, fontWeight: 500, marginTop: size === "tiny" ? 2 : 4, textTransform: "capitalize" }}>{date}</div>
+      <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: sizes[size] || 32, fontWeight: 300, color: textColor || t.text, letterSpacing: "-0.02em", lineHeight: 1 }}>{time}</div>
+      <div style={{ fontFamily: "Nunito, sans-serif", fontSize: size === "huge" ? 18 : size === "large" ? 16 : size === "tiny" ? 11 : 13, color: secColor || t.textSec, fontWeight: 500, marginTop: size === "tiny" ? 2 : 4, textTransform: "capitalize" }}>{date}</div>
     </div>
   )
 }
@@ -375,7 +392,7 @@ function getPersonForEvent(ev, persons) {
   const idx = persons.findIndex(p => p.user_id === ev.created_by)
   return idx >= 0 ? persons[idx] : persons[0]
 }
-function CalendarWidget({ events, persons, fill, compact, large, onDayClick }) {
+function CalendarWidget({ events, persons, fill, compact, large, onDayClick, dark }) {
   const today = new Date()
   const [vm, setVm] = useState(today.getMonth())
   const [vy, setVy] = useState(today.getFullYear())
@@ -412,21 +429,24 @@ function CalendarWidget({ events, persons, fill, compact, large, onDayClick }) {
   }, [events, vy, vm, persons])
 
   const isCurrentMonth = vm === today.getMonth() && vy === today.getFullYear()
+  const txtColor = dark ? "#e8eaf0" : t.text
+  const txtSec = dark ? "rgba(255,255,255,0.6)" : t.textSec
+  const txtMuted = dark ? "rgba(255,255,255,0.35)" : t.textMuted
 
   return (
-    <Card accent={ACCENT.calendar} style={fill ? { flex: 1, minHeight: 0 } : {}}>
+    <Card dark={dark} accent={ACCENT.calendar} style={fill ? { flex: 1, minHeight: 0 } : {}}>
       <div style={{ padding: compact ? "10px 12px" : "14px 16px", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
           <Label color={ACCENT.calendar} icon={CalendarDays}>Kalender</Label>
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <button onClick={() => { if (vm === 0) { setVm(11); setVy(y => y - 1) } else setVm(m => m - 1) }} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, color: t.textMuted }}><ChevronLeft size={14} /></button>
-            <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, color: t.textSec, fontWeight: 600, textTransform: "capitalize", minWidth: 80, textAlign: "center" }}>{month} {vy}</span>
-            <button onClick={() => { if (vm === 11) { setVm(0); setVy(y => y + 1) } else setVm(m => m + 1) }} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, color: t.textMuted }}><ChevronRight size={14} /></button>
+            <button onClick={() => { if (vm === 0) { setVm(11); setVy(y => y - 1) } else setVm(m => m - 1) }} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, color: txtMuted }}><ChevronLeft size={14} /></button>
+            <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, color: txtSec, fontWeight: 600, textTransform: "capitalize", minWidth: 80, textAlign: "center" }}>{month} {vy}</span>
+            <button onClick={() => { if (vm === 11) { setVm(0); setVy(y => y + 1) } else setVm(m => m + 1) }} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, color: txtMuted }}><ChevronRight size={14} /></button>
           </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, marginBottom: 4 }}>
           {DAYS_SHORT.map(d => (
-            <div key={d} style={{ textAlign: "center", fontFamily: "Nunito, sans-serif", fontSize: large ? 12 : compact ? 10 : 11, fontWeight: 700, color: t.textMuted, textTransform: "uppercase" }}>{d}</div>
+            <div key={d} style={{ textAlign: "center", fontFamily: "Nunito, sans-serif", fontSize: large ? 12 : compact ? 10 : 11, fontWeight: 700, color: txtMuted, textTransform: "uppercase" }}>{d}</div>
           ))}
         </div>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: large ? 3 : 1 }}>
@@ -438,7 +458,7 @@ function CalendarWidget({ events, persons, fill, compact, large, onDayClick }) {
                 const clickable = !!(day && onDayClick)
                 const holiday = day ? getHolidayForDate(new Date(vy, vm, day)) : null
                 const isRedDay = !!holiday?.redday
-                const dateColor = !day ? "transparent" : isToday ? ACCENT.calendar : isRedDay ? "#dc2626" : t.text
+                const dateColor = !day ? "transparent" : isToday ? ACCENT.calendar : isRedDay ? "#dc2626" : txtColor
                 return (
                   <div key={di}
                     onClick={clickable ? () => onDayClick(new Date(vy, vm, day)) : undefined}
@@ -491,7 +511,7 @@ function CalendarWidget({ events, persons, fill, compact, large, onDayClick }) {
                       </div>
                     ))}
                     {dayEvents.length > (large ? 2 : fill ? 2 : 1) && (
-                      <div style={{ fontSize: large ? 10 : 6, color: t.textMuted, textAlign: "center", fontWeight: 700, marginTop: 1 }}>
+                      <div style={{ fontSize: large ? 10 : 6, color: txtMuted, textAlign: "center", fontWeight: 700, marginTop: 1 }}>
                         +{dayEvents.length - (large ? 2 : fill ? 2 : 1)} fler
                       </div>
                     )}
@@ -506,7 +526,7 @@ function CalendarWidget({ events, persons, fill, compact, large, onDayClick }) {
             {persons.map((p, i) => (
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 4 }}>
                 <div style={{ width: 8, height: 8, borderRadius: 4, background: p.color }} />
-                <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 10, fontWeight: 600, color: t.textSec }}>{p.name}</span>
+                <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 10, fontWeight: 600, color: txtSec }}>{p.name}</span>
               </div>
             ))}
           </div>
@@ -1591,52 +1611,54 @@ function CalendarTab({ isMobile, events, persons, onAddEvent, onDeleteEvent, onO
 // ════════════════════════════════════════════════
 //  LISTS
 // ════════════════════════════════════════════════
-function TodoCard({ pinnedList, onToggle, fill, maxHeight }) {
+function TodoCard({ pinnedList, onToggle, fill, maxHeight, dark }) {
   const list = pinnedList || { id: null, name: "Att göra", color: ACCENT.todo, items: [] }
   const items = list.items || []
   const activeItems = items.filter(i => !i.done)
   const doneItems = items.filter(i => i.done)
   const [showDone, setShowDone] = useState(false)
   const listColor = list.color || ACCENT.todo
-  // Hem-vy: cap höjd + scroll. TV (fill): följer flex-parent + scroll inuti.
+  const txtColor = dark ? "#e8eaf0" : t.text
+  const txtSec = dark ? "rgba(255,255,255,0.6)" : t.textSec
+  const txtMuted = dark ? "rgba(255,255,255,0.35)" : t.textMuted
+  const lineColor = dark ? "rgba(255,255,255,0.08)" : t.line
   const listContainerStyle = fill
     ? { display: "flex", flexDirection: "column", gap: 6, flex: 1, overflowY: "auto", minHeight: 0 }
     : { display: "flex", flexDirection: "column", gap: 6, flex: 1, overflowY: "auto", maxHeight: maxHeight || 280 }
   return (
-    <Card accent={listColor} style={fill ? { flex: 1, minHeight: 0 } : {}}>
+    <Card dark={dark} accent={listColor} style={fill ? { flex: 1, minHeight: 0 } : {}}>
       <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
           <Label color={listColor} icon={ListChecks}>{list.name}</Label>
-          <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textSec }}>{doneItems.length}/{items.length}</span>
+          <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: txtSec }}>{doneItems.length}/{items.length}</span>
         </div>
         <div style={listContainerStyle}>
           {items.length === 0 && (
-            <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textMuted, fontStyle: "italic" }}>Inga uppgifter</span>
+            <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: txtMuted, fontStyle: "italic" }}>Inga uppgifter</span>
           )}
           {activeItems.map(item => (
             <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", flexShrink: 0 }} onClick={() => onToggle(item)}>
               <div style={{
                 width: 20, height: 20, borderRadius: 6,
-                border: `2px solid ${t.textMuted}`,
+                border: `2px solid ${txtMuted}`,
                 background: "transparent",
                 display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
               }} />
-              <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 500, color: t.text }}>{item.text}</span>
+              <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 500, color: txtColor }}>{item.text}</span>
             </div>
           ))}
-          {/* Bockat-sektion (kollapsbar) */}
           {doneItems.length > 0 && (
-            <div style={{ borderTop: `1px solid ${t.line}`, paddingTop: 8, marginTop: 4, flexShrink: 0 }}>
+            <div style={{ borderTop: `1px solid ${lineColor}`, paddingTop: 8, marginTop: 4, flexShrink: 0 }}>
               <div onClick={() => setShowDone(s => !s)} style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between",
                 cursor: "pointer", padding: "2px 0",
-                fontFamily: "Nunito, sans-serif", fontSize: 11, fontWeight: 700, color: t.textSec,
+                fontFamily: "Nunito, sans-serif", fontSize: 11, fontWeight: 700, color: txtSec,
               }}>
                 <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
                   <Check size={11} color={listColor} />
                   Bockat ({doneItems.length})
                 </span>
-                <ChevronRight size={11} color={t.textMuted} style={{ transform: showDone ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.2s" }} />
+                <ChevronRight size={11} color={txtMuted} style={{ transform: showDone ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.2s" }} />
               </div>
               {showDone && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
@@ -1649,7 +1671,7 @@ function TodoCard({ pinnedList, onToggle, fill, maxHeight }) {
                       }}><Check size={12} color="#fff" strokeWidth={3} /></div>
                       <span style={{
                         fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 500,
-                        color: t.textMuted, textDecoration: "line-through",
+                        color: txtMuted, textDecoration: "line-through",
                       }}>{item.text}</span>
                     </div>
                   ))}
@@ -2003,10 +2025,13 @@ function ArchiveView({ archivedLists, onRestore, onDeletePermanent }) {
 // ════════════════════════════════════════════════
 //  MEAL
 // ════════════════════════════════════════════════
-function MealCard({ fill, mealsByWeekday, mealTagsLocal, onSetMealText, onSetMealTag }) {
+function MealCard({ fill, mealsByWeekday, mealTagsLocal, onSetMealText, onSetMealTag, dark }) {
   const [editIdx, setEditIdx] = useState(null)
   const [editVal, setEditVal] = useState("")
   const todayIdx = (new Date().getDay() + 6) % 7
+  const txtColor = dark ? "#e8eaf0" : t.text
+  const txtSec = dark ? "rgba(255,255,255,0.6)" : t.textSec
+  const txtMuted = dark ? "rgba(255,255,255,0.35)" : t.textMuted
 
   function startEdit(i) { setEditIdx(i); setEditVal(mealsByWeekday[i + 1]?.meal_text || "") }
   function saveEdit() {
@@ -2021,7 +2046,7 @@ function MealCard({ fill, mealsByWeekday, mealTagsLocal, onSetMealText, onSetMea
   }
 
   return (
-    <Card accent={ACCENT.meal} style={fill ? { flex: 1, minHeight: 0 } : {}}>
+    <Card dark={dark} accent={ACCENT.meal} style={fill ? { flex: 1, minHeight: 0 } : {}}>
       <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
           <Label color={ACCENT.meal} icon={UtensilsCrossed}>Matsedel</Label>
@@ -2045,7 +2070,7 @@ function MealCard({ fill, mealsByWeekday, mealTagsLocal, onSetMealText, onSetMea
                 }}>
                   <span style={{
                     fontFamily: "Nunito, sans-serif", fontSize: fill ? 13 : 12,
-                    fontWeight: isToday ? 700 : 500, color: isToday ? ACCENT.meal : t.textSec,
+                    fontWeight: isToday ? 700 : 500, color: isToday ? ACCENT.meal : txtSec,
                     minWidth: fill ? 60 : 50, flexShrink: 0,
                   }}>{day}</span>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, justifyContent: "flex-end", minWidth: 0 }}>
@@ -2059,7 +2084,7 @@ function MealCard({ fill, mealsByWeekday, mealTagsLocal, onSetMealText, onSetMea
                         onKeyDown={e => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") setEditIdx(null) }}
                         style={{
                           fontFamily: "Nunito, sans-serif", fontSize: fill ? 13 : 12, fontWeight: 500,
-                          color: t.text, textAlign: "right", background: "transparent",
+                          color: txtColor, textAlign: "right", background: "transparent",
                           border: "none", outline: "none", borderBottom: `2px solid ${ACCENT.meal}`,
                           padding: "1px 0", width: "100%", maxWidth: 180,
                         }} />
@@ -2067,7 +2092,7 @@ function MealCard({ fill, mealsByWeekday, mealTagsLocal, onSetMealText, onSetMea
                       <span style={{
                         fontFamily: "Nunito, sans-serif", fontSize: fill ? 13 : 12,
                         fontWeight: isToday ? 700 : 500,
-                        color: mealText ? t.text : t.textMuted,
+                        color: mealText ? txtColor : txtMuted,
                         textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                       }}>{mealText || (tag ? "" : "Tryck för att fylla i...")}</span>
                     )}
@@ -2305,17 +2330,17 @@ function SectionHeader({ title, onBack }) {
   )
 }
 
-function ProfileSection({ onBack, session }) {
+function ProfileSection({ onBack, session, themeColor, setThemeColor }) {
   const email = session?.user?.email || ""
   const initial = (email[0] || "?").toUpperCase()
   const [name, setName] = useState(session?.user?.user_metadata?.name || email.split("@")[0] || "")
   return (
     <div>
       <SectionHeader title="Profil" onBack={onBack} />
-      <Card>
+      <Card style={{ marginBottom: 12 }}>
         <div style={{ padding: 20, display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
-          <div style={{ width: 80, height: 80, borderRadius: 20, background: `${ACCENT.calendar}12`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <span style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 32, fontWeight: 700, color: ACCENT.calendar }}>{initial}</span>
+          <div style={{ width: 80, height: 80, borderRadius: 20, background: `${themeColor}12`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <span style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 32, fontWeight: 700, color: themeColor }}>{initial}</span>
           </div>
           <Btn small outline><Edit3 size={12} /> Byt profilbild (TODO: storage)</Btn>
           <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -2328,6 +2353,40 @@ function ProfileSection({ onBack, session }) {
               <input value={email} disabled style={{ ...inputStyle, fontSize: 14, width: "100%", marginTop: 4, opacity: 0.6 }} />
             </div>
           </div>
+        </div>
+      </Card>
+
+      {/* Tema-väljare */}
+      <Card>
+        <div style={{ padding: 16 }}>
+          <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 4 }}>🎨 Tema-färg</div>
+          <p style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textSec, margin: "0 0 12px" }}>
+            Välj din primärfärg. Påverkar knappar, sidebar och accenter på din enhet.
+          </p>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {THEME_PRESETS.map(p => {
+              const active = themeColor === p.color
+              return (
+                <button key={p.id} onClick={() => setThemeColor(p.color)} style={{
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                  padding: "8px 6px", borderRadius: 12,
+                  background: active ? `${p.color}15` : "transparent",
+                  border: active ? `2px solid ${p.color}` : `2px solid transparent`,
+                  cursor: "pointer", fontFamily: "Nunito, sans-serif",
+                  minWidth: 60,
+                }}>
+                  <div style={{
+                    width: 32, height: 32, borderRadius: 16, background: p.color,
+                    boxShadow: active ? `0 2px 8px ${p.color}50` : "0 1px 3px rgba(0,0,0,0.1)",
+                  }} />
+                  <span style={{ fontSize: 11, fontWeight: 700, color: active ? p.color : t.textSec }}>{p.label}</span>
+                </button>
+              )
+            })}
+          </div>
+          <p style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textMuted, margin: "12px 0 0" }}>
+            Sparas lokalt på din enhet. Andra familjemedlemmar har egna val.
+          </p>
         </div>
       </Card>
     </div>
@@ -2839,7 +2898,7 @@ function AccountSection({ onBack }) {
   )
 }
 
-function SettingsTab({ isMobile, session, household, members, foodPrefs, setFoodPrefs, onCreateInvite, tvData, tvSlots, onSaveTvSlots, tvPhotoUrl, onSaveTvPhoto, onUploadTvPhoto, userId }) {
+function SettingsTab({ isMobile, session, household, members, foodPrefs, setFoodPrefs, onCreateInvite, tvData, tvSlots, onSaveTvSlots, tvPhotoUrl, onSaveTvPhoto, onUploadTvPhoto, userId, themeColor, setThemeColor }) {
   const [activeSection, setActiveSection] = useState(null)
   const sections = [
     { id: "profile", icon: User, label: "Profil", desc: "Namn, profilbild" },
@@ -2849,7 +2908,7 @@ function SettingsTab({ isMobile, session, household, members, foodPrefs, setFood
     { id: "account", icon: LogOut, label: "Konto", desc: "Logga ut" },
   ]
   if (activeSection === "tv") return <TvEditorSection onBack={() => setActiveSection(null)} isMobile={isMobile} tvData={tvData} tvSlots={tvSlots} onSaveTvSlots={onSaveTvSlots} tvPhotoUrl={tvPhotoUrl} onSaveTvPhoto={onSaveTvPhoto} onUploadTvPhoto={onUploadTvPhoto} />
-  if (activeSection === "profile") return <ProfileSection onBack={() => setActiveSection(null)} session={session} />
+  if (activeSection === "profile") return <ProfileSection onBack={() => setActiveSection(null)} session={session} themeColor={themeColor} setThemeColor={setThemeColor} />
   if (activeSection === "household") return <HouseholdSection onBack={() => setActiveSection(null)} household={household} members={members} userId={userId} onCreateInvite={onCreateInvite} />
   if (activeSection === "food") return <FoodPrefsSection onBack={() => setActiveSection(null)} foodPrefs={foodPrefs} setFoodPrefs={setFoodPrefs} />
   if (activeSection === "account") return <AccountSection onBack={() => setActiveSection(null)} />
@@ -3075,6 +3134,7 @@ function TabContent({
   // settings
   session, household, members, onCreateInvite, tvData, tvSlots, onSaveTvSlots,
   tvPhotoUrl, onSaveTvPhoto, onUploadTvPhoto,
+  themeColor, setThemeColor,
   // activity + countdowns + meal history
   activity, countdowns, onAddCountdown, onDeleteCountdown, onTogglePinCountdown,
   householdIdProp, currentWeekStart,
@@ -3172,7 +3232,8 @@ function TabContent({
         onCreateInvite={onCreateInvite}
         tvData={tvData} tvSlots={tvSlots} onSaveTvSlots={onSaveTvSlots}
         tvPhotoUrl={tvPhotoUrl} onSaveTvPhoto={onSaveTvPhoto} onUploadTvPhoto={onUploadTvPhoto}
-        userId={userId} />
+        userId={userId}
+        themeColor={themeColor} setThemeColor={setThemeColor} />
     </div>
   )
   return null
@@ -3181,7 +3242,7 @@ function TabContent({
 // ════════════════════════════════════════════════
 //  LAYOUTS
 // ════════════════════════════════════════════════
-function MobileNav({ tab, setTab }) {
+function MobileNav({ tab, setTab, themeColor = ACCENT.calendar }) {
   const tabs = [
     { id: "hem", icon: Home, label: "Hem" },
     { id: "kalender", icon: CalendarDays, label: "Kalender" },
@@ -3198,15 +3259,15 @@ function MobileNav({ tab, setTab }) {
           display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
           padding: "4px 12px", opacity: tab === id ? 1 : 0.4, transition: "opacity 0.2s",
         }}>
-          <Icon size={20} color={tab === id ? ACCENT.calendar : t.text} strokeWidth={tab === id ? 2.5 : 1.8} />
-          <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 10, fontWeight: tab === id ? 700 : 500, color: tab === id ? ACCENT.calendar : t.textSec }}>{label}</span>
+          <Icon size={20} color={tab === id ? themeColor : t.text} strokeWidth={tab === id ? 2.5 : 1.8} />
+          <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 10, fontWeight: tab === id ? 700 : 500, color: tab === id ? themeColor : t.textSec }}>{label}</span>
         </button>
       ))}
     </div>
   )
 }
 
-function DesktopSidebar({ tab, setTab, session, weather, household }) {
+function DesktopSidebar({ tab, setTab, session, weather, household, themeColor = ACCENT.calendar }) {
   const items = [
     { id: "hem", icon: Home, label: "Hem" },
     { id: "kalender", icon: CalendarDays, label: "Kalender" },
@@ -3231,10 +3292,10 @@ function DesktopSidebar({ tab, setTab, session, weather, household }) {
             <button key={id} onClick={() => setTab(id)} style={{
               display: "flex", alignItems: "center", gap: 10,
               padding: "10px 12px", borderRadius: 10,
-              background: active ? `${ACCENT.calendar}10` : "transparent",
+              background: active ? `${themeColor}10` : "transparent",
               border: "none", cursor: "pointer",
             }}>
-              <Icon size={18} color={active ? ACCENT.calendar : t.textSec} strokeWidth={active ? 2.4 : 1.8} />
+              <Icon size={18} color={active ? themeColor : t.textSec} strokeWidth={active ? 2.4 : 1.8} />
               <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 14, fontWeight: active ? 700 : 500, color: active ? t.text : t.textSec }}>{label}</span>
             </button>
           )
@@ -3242,8 +3303,8 @@ function DesktopSidebar({ tab, setTab, session, weather, household }) {
       </div>
       <div style={{ padding: "12px 20px", borderTop: `1px solid ${t.line}` }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 10, background: `${ACCENT.calendar}15`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <span style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 13, fontWeight: 700, color: ACCENT.calendar }}>{initial}</span>
+          <div style={{ width: 32, height: 32, borderRadius: 10, background: `${themeColor}15`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <span style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 13, fontWeight: 700, color: themeColor }}>{initial}</span>
           </div>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: t.text, fontFamily: "Nunito, sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{email}</div>
@@ -3332,28 +3393,30 @@ const LAYOUT_PRESETS = {
 
 // Standardiserad widget-renderer för TV-slots
 function renderTvSlotWidget(type, p) {
-  if (type === "calendar") return <CalendarWidget events={p.calEvents} persons={p.persons} fill onDayClick={p.onDayClick} />
-  if (type === "todo")     return <TodoCard pinnedList={p.pinnedList} onToggle={p.onToggleItem} fill />
-  if (type === "meal")     return <MealCard fill mealsByWeekday={p.mealsByWeekday} mealTagsLocal={p.mealTagsLocal} onSetMealText={() => {}} onSetMealTag={() => {}} />
-  if (type === "events")   return <TvEventsCard events={p.calEvents} persons={p.persons} />
-  if (type === "countdown") return <TvCountdownCard countdowns={p.countdowns} />
-  if (type === "empty")    return <div style={{ flex: 1, background: t.inputBg, borderRadius: 14, border: `1px dashed ${t.cardBorder}` }} />
+  if (type === "calendar") return <CalendarWidget events={p.calEvents} persons={p.persons} fill onDayClick={p.onDayClick} dark={p.dark} />
+  if (type === "todo")     return <TodoCard pinnedList={p.pinnedList} onToggle={p.onToggleItem} fill dark={p.dark} />
+  if (type === "meal")     return <MealCard fill mealsByWeekday={p.mealsByWeekday} mealTagsLocal={p.mealTagsLocal} onSetMealText={() => {}} onSetMealTag={() => {}} dark={p.dark} />
+  if (type === "events")   return <TvEventsCard events={p.calEvents} persons={p.persons} dark={p.dark} />
+  if (type === "countdown") return <TvCountdownCard countdowns={p.countdowns} dark={p.dark} />
+  if (type === "empty")    return <div style={{ flex: 1, background: p.dark ? "rgba(255,255,255,0.04)" : t.inputBg, borderRadius: 14, border: `1px dashed ${p.dark ? "rgba(255,255,255,0.1)" : t.cardBorder}` }} />
   return null
 }
 
 // Stor kvadratisk countdown-widget för TV-vyn — visar pinned countdown med fokus på siffran
-function TvCountdownCard({ countdowns }) {
+function TvCountdownCard({ countdowns, dark }) {
   const today = new Date()
   const todayStr = fmtDate(today)
   const upcoming = (countdowns || []).filter(c => c.target_date >= todayStr).sort((a, b) => a.target_date.localeCompare(b.target_date))
   const c = upcoming.find(x => x.pinned) || upcoming[0]
+  const txtColor = dark ? "#e8eaf0" : t.text
+  const txtMuted = dark ? "rgba(255,255,255,0.5)" : t.textMuted
 
   if (!c) {
     return (
-      <Card accent="#db2777" style={{ flex: 1, minHeight: 0 }}>
+      <Card dark={dark} accent="#db2777" style={{ flex: 1, minHeight: 0 }}>
         <div style={{ padding: "14px 16px", flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, minHeight: 0 }}>
           <div style={{ fontSize: 28 }}>🎯</div>
-          <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textMuted, textAlign: "center" }}>
+          <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: txtMuted, textAlign: "center" }}>
             Inga nedräkningar
           </div>
         </div>
@@ -3366,11 +3429,11 @@ function TvCountdownCard({ countdowns }) {
   const dateStr = new Date(c.target_date + "T00:00:00").toLocaleDateString("sv-SE", { day: "numeric", month: "short" })
 
   return (
-    <Card accent={c.color} style={{ flex: 1, minHeight: 0 }}>
+    <Card dark={dark} accent={c.color} style={{ flex: 1, minHeight: 0 }}>
       <div style={{
         padding: "10px 12px",
         flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4,
-        background: `linear-gradient(135deg, ${c.color}12, ${c.color}04)`,
+        background: dark ? `linear-gradient(135deg, ${c.color}30, ${c.color}10)` : `linear-gradient(135deg, ${c.color}12, ${c.color}04)`,
         minHeight: 0, overflow: "hidden",
       }}>
         {c.emoji && <div style={{ fontSize: 22, lineHeight: 1 }}>{c.emoji}</div>}
@@ -3385,24 +3448,24 @@ function TvCountdownCard({ countdowns }) {
             }}>{days}</div>
             <div style={{
               fontFamily: "Nunito, sans-serif", fontSize: 9, fontWeight: 700,
-              color: c.color, opacity: 0.8,
+              color: c.color, opacity: 0.85,
               textTransform: "uppercase", letterSpacing: "0.08em",
             }}>{days === 1 ? "DAG KVAR" : "DAGAR KVAR"}</div>
           </>
         )}
         <div style={{
           fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 700,
-          color: t.text, marginTop: 4, textAlign: "center",
+          color: txtColor, marginTop: 4, textAlign: "center",
           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%",
         }}>{c.title}</div>
-        <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 10, color: t.textMuted }}>{dateStr}</div>
+        <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 10, color: txtMuted }}>{dateStr}</div>
       </div>
     </Card>
   )
 }
 
 // Lista över dagens & kommande händelser — TV-vänlig
-function TvEventsCard({ events, persons }) {
+function TvEventsCard({ events, persons, dark }) {
   const upcoming = useMemo(() => {
     const now = new Date()
     return events
@@ -3410,23 +3473,25 @@ function TvEventsCard({ events, persons }) {
       .sort((a, b) => new Date(a.start_time) - new Date(b.start_time))
       .slice(0, 6)
   }, [events])
+  const txtColor = dark ? "#e8eaf0" : t.text
+  const txtMuted = dark ? "rgba(255,255,255,0.5)" : t.textMuted
   return (
-    <Card accent={ACCENT.event} style={{ flex: 1, minHeight: 0 }}>
+    <Card dark={dark} accent={ACCENT.event} style={{ flex: 1, minHeight: 0 }}>
       <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
         <Label color={ACCENT.event} icon={CalendarDays}>Kommande</Label>
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10, flex: 1, overflow: "hidden" }}>
-          {upcoming.length === 0 && <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textMuted, fontStyle: "italic" }}>Inget inplanerat</span>}
+          {upcoming.length === 0 && <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: txtMuted, fontStyle: "italic" }}>Inget inplanerat</span>}
           {upcoming.map(ev => {
             const p = getPersonForEvent(ev, persons)
             const d = new Date(ev.start_time)
             return (
-              <div key={ev.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", background: `${p.color}08`, borderRadius: 8, border: `1px solid ${p.color}15` }}>
+              <div key={ev.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", background: dark ? `${p.color}25` : `${p.color}08`, borderRadius: 8, border: `1px solid ${p.color}30` }}>
                 <div style={{ width: 3, height: 22, borderRadius: 2, background: p.color, flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 9, color: t.textMuted }}>
+                  <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 9, color: txtMuted }}>
                     {d.getDate()} {MONTHS_SHORT[d.getMonth()]} · {fmtTime(ev.start_time)}
                   </div>
-                  <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.title}</div>
+                  <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: txtColor, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.title}</div>
                 </div>
               </div>
             )
@@ -3484,14 +3549,24 @@ function TvLayoutGrid({ layoutKey, slots, widgetProps, slotOverlay }) {
   )
 }
 
-function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, weather, slots, slotOverlay, onDayClick, photoUrl, countdowns }) {
+function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, weather, slots, slotOverlay, onDayClick, photoUrl, countdowns, dark }) {
   const s = { ...DEFAULT_TV_SLOTS, ...(slots || {}) }
   const layoutKey = s.layout || "standard"
-  const widgetProps = { persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, onDayClick, countdowns }
+  const widgetProps = { persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, onDayClick, countdowns, dark }
+
+  // Färgsystem för dark mode på TV
+  const tvBg = dark ? "#0a0b14" : t.bg
+  const tvText = dark ? "#e8eaf0" : t.text
+  const tvTextSec = dark ? "rgba(255,255,255,0.65)" : t.textSec
+  const tvTextMuted = dark ? "rgba(255,255,255,0.35)" : t.textMuted
+  const tvCardBg = dark ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.7)"
+  const tvCardBorder = dark ? "rgba(255,255,255,0.1)" : t.cardBorder
+  const photoOverlay = dark ? "rgba(10,11,20,0.65)" : "rgba(240,242,245,0.55)"
+
   return (
     <div style={{
       width: "100%", height: "100%",
-      background: t.bg,
+      background: tvBg,
       backgroundImage: photoUrl ? `url("${photoUrl}")` : undefined,
       backgroundSize: "cover",
       backgroundPosition: "center",
@@ -3499,33 +3574,42 @@ function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWe
       display: "flex", flexDirection: "column", overflow: "hidden",
       boxSizing: "border-box",
       position: "relative",
+      transition: "background 0.6s ease",
     }}>
       {photoUrl && (
-        // Semi-transparent overlay så widgets förblir läsbara mot fotot
         <div style={{
           position: "absolute", inset: 0,
-          background: "rgba(240,242,245,0.55)",
+          background: photoOverlay,
           backdropFilter: "blur(1px)",
           pointerEvents: "none",
+          transition: "background 0.6s ease",
         }} />
       )}
       <div style={{ position: "relative", zIndex: 1, padding: "24px 20px 12px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <ClockDisplay size="huge" />
+        {/* ClockDisplay får dark-tema via inline override */}
+        <div style={{ color: tvText }}>
+          <ClockDisplay size="huge" textColor={tvText} secColor={tvTextSec} />
+        </div>
         <div style={{ textAlign: "right" }}>
           {weather ? <>
-            <WmoIcon code={weather.code} size={40} color={ACCENT.weather} />
-            <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 32, fontWeight: 300, color: t.text }}>{weather.temp}°</div>
-            <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textMuted }}>{weather.desc}</div>
-          </> : <span style={{ color: t.textMuted, fontSize: 12 }}>—</span>}
+            <WmoIcon code={weather.code} size={40} color={dark ? "#7dd3fc" : ACCENT.weather} />
+            <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 32, fontWeight: 300, color: tvText }}>{weather.temp}°</div>
+            <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: tvTextMuted }}>{weather.desc}</div>
+          </> : <span style={{ color: tvTextMuted, fontSize: 12 }}>—</span>}
         </div>
       </div>
       {weather?.forecast && (
         <div style={{ position: "relative", zIndex: 1, display: "flex", gap: 8, padding: "0 20px 12px" }}>
           {weather.forecast.map(f => (
-            <div key={f.day} style={{ flex: 1, background: "rgba(255,255,255,0.7)", borderRadius: 10, padding: "5px 0", textAlign: "center", border: `1px solid ${t.cardBorder}`, boxShadow: "0 1px 2px rgba(0,0,0,0.03)" }}>
-              <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 10, fontWeight: 700, color: t.textMuted, letterSpacing: "0.05em" }}>{f.day}</div>
-              <WmoIcon code={f.code} size={16} color={t.textSec} />
-              <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 11, fontWeight: 600, color: t.textSec }}>{f.temp}</div>
+            <div key={f.day} style={{
+              flex: 1, background: tvCardBg, borderRadius: 10, padding: "5px 0", textAlign: "center",
+              border: `1px solid ${tvCardBorder}`,
+              boxShadow: dark ? "0 1px 2px rgba(0,0,0,0.3)" : "0 1px 2px rgba(0,0,0,0.03)",
+              backdropFilter: dark ? "blur(8px)" : "none",
+            }}>
+              <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 10, fontWeight: 700, color: tvTextMuted, letterSpacing: "0.05em" }}>{f.day}</div>
+              <WmoIcon code={f.code} size={16} color={tvTextSec} />
+              <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 11, fontWeight: 600, color: tvTextSec }}>{f.temp}</div>
             </div>
           ))}
         </div>
@@ -3561,18 +3645,18 @@ function TvLayout(props) {
       width: 540, height: 960,
       position: "fixed", top: 0, left: 0, overflow: "hidden",
       zoom: 2, transformOrigin: "top left",
-      filter: isNight ? "brightness(0.45) contrast(0.95)" : "none",
-      transition: "filter 0.6s ease",
+      transition: "background 0.6s ease",
     }}>
       <style>{"html,body{margin:0!important;padding:0!important;overflow:hidden!important;background:#000!important}"}</style>
-      <TvViewContent {...props} />
+      <TvViewContent {...props} dark={isNight} />
       {isNight && (
         <div style={{
-          position: "absolute", top: 8, right: 8, zIndex: 50,
-          background: "rgba(0,0,0,0.3)", borderRadius: 8,
-          padding: "2px 8px", display: "flex", alignItems: "center", gap: 4,
-          color: "rgba(255,255,255,0.5)", fontFamily: "Nunito, sans-serif",
-          fontSize: 9, fontWeight: 700,
+          position: "absolute", top: 12, right: 12, zIndex: 50,
+          background: "rgba(255,255,255,0.08)", borderRadius: 8,
+          padding: "3px 10px", display: "flex", alignItems: "center", gap: 4,
+          color: "rgba(255,255,255,0.7)", fontFamily: "Nunito, sans-serif",
+          fontSize: 10, fontWeight: 700,
+          backdropFilter: "blur(8px)",
         }}>🌙 Nattläge</div>
       )}
     </div>
@@ -3612,6 +3696,20 @@ export default function SmartHub({ session, household }) {
   // ── UI state ──
   const [tab, setTab] = useState("hem")
   const [showArchive, setShowArchive] = useState(false)
+  const [themeColor, setThemeColorState] = useState(() => getThemeColor())
+  function setThemeColor(c) {
+    setThemeColorState(c)
+    if (typeof window !== "undefined") {
+      try { localStorage.setItem("smarthub:themeColor", c) } catch {}
+      // Sätt CSS-variabel så vi kan använda den i style
+      document.documentElement.style.setProperty("--smarthub-primary", c)
+    }
+  }
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      document.documentElement.style.setProperty("--smarthub-primary", themeColor)
+    }
+  }, [themeColor])
 
   // ── Data state (synced from Supabase, same shape as v10) ──
   const [lists, setLists] = useState([])
@@ -4426,6 +4524,7 @@ export default function SmartHub({ session, household }) {
     },
     tvSlots, onSaveTvSlots: handleSaveTvSlots,
     tvPhotoUrl, onSaveTvPhoto: handleSaveTvPhoto, onUploadTvPhoto: handleUploadTvPhoto,
+    themeColor, setThemeColor,
     activity,
     countdowns, onAddCountdown: handleAddCountdown, onDeleteCountdown: handleDeleteCountdown, onTogglePinCountdown: handleTogglePinCountdown,
     householdIdProp: householdId, currentWeekStart,
@@ -4440,7 +4539,7 @@ export default function SmartHub({ session, household }) {
           <div style={{ flex: 1, overflow: "auto", paddingBottom: 70 }}>
             <TabContent {...tabContentProps} />
           </div>
-          <MobileNav tab={tab} setTab={setTab} />
+          <MobileNav tab={tab} setTab={setTab} themeColor={themeColor} />
           <AiChat position="mobile" callAi={callAiChat} executeTool={executeAiTool} />
         </div>
         {liftedModals}
@@ -4453,7 +4552,7 @@ export default function SmartHub({ session, household }) {
     <>
       {fonts}{globalCss}
       <div style={{ height: "100vh", background: t.bg, display: "flex", overflow: "hidden", fontFamily: "Nunito, sans-serif" }}>
-        <DesktopSidebar tab={tab} setTab={setTab} session={session} weather={weather} household={household} />
+        <DesktopSidebar tab={tab} setTab={setTab} session={session} weather={weather} household={household} themeColor={themeColor} />
         <div style={{ flex: 1, overflow: "auto", minWidth: 0, position: "relative" }}>
           <TabContent {...tabContentProps} />
           <AiChat position="desktop" callAi={callAiChat} executeTool={executeAiTool} />
