@@ -1246,7 +1246,7 @@ function NotificationBell({ activity, persons, members, userId, onOpenFeed }) {
 }
 
 // Modal som visar alla händelser för en specifik dag, med möjlighet att lägga till ny.
-function DayModal({ open, date, events, persons, onClose, onAddEvent, onEditEvent, onDeleteEvent }) {
+function DayModal({ open, date, events, persons, onClose, onAddEvent, onEditEvent, onDeleteEvent, userId }) {
   if (!open || !date) return null
   const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate())
   const dayEnd = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59)
@@ -1300,28 +1300,32 @@ function DayModal({ open, date, events, persons, onClose, onAddEvent, onEditEven
               {dayEvents.map(ev => {
                 const p = getPersonForEvent(ev, persons)
                 const isRecurring = !!ev.master_id || !!ev.recurrence_rule
+                // Master-id räknas som ägare av instanser av återkommande events
+                const isOwner = ev.created_by === userId
                 return (
                   <div key={ev.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", background: `${p.color}08`, borderRadius: 10, border: `1px solid ${p.color}15` }}>
                     <div style={{ width: 4, height: 36, borderRadius: 2, background: p.color, flexShrink: 0 }} />
-                    <div style={{ flex: 1, minWidth: 0, cursor: onEditEvent ? "pointer" : "default" }} onClick={() => onEditEvent && onEditEvent(ev)}>
+                    <div style={{ flex: 1, minWidth: 0, cursor: isOwner && onEditEvent ? "pointer" : "default" }} onClick={() => isOwner && onEditEvent && onEditEvent(ev)}>
                       <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 12, color: t.textMuted, display: "flex", alignItems: "center", gap: 4 }}>
                         {fmtTime(ev.start_time)}
                         {ev.end_time && ev.end_time !== ev.start_time && ` – ${fmtTime(ev.end_time)}`}
                         {isRecurring && <Repeat size={10} color={t.textMuted} />}
                         {ev.reminder_minutes != null && <span title="Påminnelse satt" style={{ fontSize: 10 }}>🔔</span>}
+                        {!isOwner && <span title="Skapad av annan medlem" style={{ fontSize: 9, color: t.textMuted }}>· {p.name}</span>}
                       </div>
                       <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 14, color: t.text, fontWeight: 600 }}>{ev.title}</div>
-                      {p.name && <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: p.color, fontWeight: 700, marginTop: 2 }}>{p.name}</div>}
                       {ev.location && <div style={{ fontSize: 11, color: t.textMuted, marginTop: 2, display: "flex", alignItems: "center", gap: 3 }}><MapPin size={10} /> {ev.location}</div>}
                     </div>
-                    {onEditEvent && (
+                    {isOwner && onEditEvent && (
                       <button onClick={() => onEditEvent(ev)} style={{ background: "none", border: "none", cursor: "pointer", color: t.textMuted, padding: 4 }} title="Redigera">
                         <Edit3 size={16} />
                       </button>
                     )}
-                    <button onClick={() => handleDelete(ev)} style={{ background: "none", border: "none", cursor: "pointer", color: t.textMuted, padding: 4 }} title="Ta bort">
-                      <X size={16} />
-                    </button>
+                    {isOwner && (
+                      <button onClick={() => handleDelete(ev)} style={{ background: "none", border: "none", cursor: "pointer", color: t.textMuted, padding: 4 }} title="Ta bort">
+                        <X size={16} />
+                      </button>
+                    )}
                   </div>
                 )
               })}
@@ -1708,7 +1712,7 @@ function CheckedSection({ doneItems, listColor, onToggle, onDelete }) {
   )
 }
 
-function ListsView({ lists, pinnedListId, onToggleItem, onTogglePin, onToggleShared, onAddTodo, onAddList, onDeleteList, onDeleteTodo, onArchiveList }) {
+function ListsView({ lists, pinnedListId, onToggleItem, onTogglePin, onToggleShared, onAddTodo, onAddList, onDeleteList, onDeleteTodo, onArchiveList, userId }) {
   const [expandedId, setExpandedId] = useState(lists[0]?.id)
   const [addingForList, setAddingForList] = useState(null)
   const [newText, setNewText] = useState("")
@@ -1764,6 +1768,7 @@ function ListsView({ lists, pinnedListId, onToggleItem, onTogglePin, onToggleSha
         const items = list.items || []
         const doneCount = items.filter(i => i.done).length
         const pinned = list.id === pinnedListId
+        const isOwner = list.created_by === userId
         const dl = daysLeft(list.expires_at)
         return (
           <Card key={list.id} accent={list.color}>
@@ -1826,18 +1831,28 @@ function ListsView({ lists, pinnedListId, onToggleItem, onTogglePin, onToggleSha
                   )}
 
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+                    {/* Pin är personlig — alla kan välja vilken lista som visas på sin Hem */}
                     <Btn small outline color={pinned ? ACCENT.todo : t.textSec} onClick={e => { e.stopPropagation(); onTogglePin(list.id) }}>
                       <Home size={12} /> {pinned ? "Visas på hem" : "Visa på hem"}
                     </Btn>
-                    <Btn small outline color={list.shared ? ACCENT.calendar : t.textSec} onClick={e => { e.stopPropagation(); onToggleShared(list) }}>
-                      {list.shared ? <><Users size={12} /> Delad</> : <><Lock size={12} /> Privat</>}
-                    </Btn>
-                    <Btn small outline color={t.textSec} onClick={e => { e.stopPropagation(); onArchiveList(list.id) }}>
-                      <Archive size={12} /> Arkivera
-                    </Btn>
-                    <Btn small outline color="#dc2626" onClick={e => { e.stopPropagation(); onDeleteList(list.id) }}>
-                      <Trash2 size={12} /> Ta bort
-                    </Btn>
+                    {/* Shared/Archive/Delete — endast ägaren */}
+                    {isOwner ? (
+                      <>
+                        <Btn small outline color={list.shared ? ACCENT.calendar : t.textSec} onClick={e => { e.stopPropagation(); onToggleShared(list) }}>
+                          {list.shared ? <><Users size={12} /> Delad</> : <><Lock size={12} /> Privat</>}
+                        </Btn>
+                        <Btn small outline color={t.textSec} onClick={e => { e.stopPropagation(); onArchiveList(list.id) }}>
+                          <Archive size={12} /> Arkivera
+                        </Btn>
+                        <Btn small outline color="#dc2626" onClick={e => { e.stopPropagation(); onDeleteList(list.id) }}>
+                          <Trash2 size={12} /> Ta bort
+                        </Btn>
+                      </>
+                    ) : (
+                      <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textMuted, fontStyle: "italic", padding: "4px 8px" }}>
+                        Bara ägaren kan ändra inställningar
+                      </span>
+                    )}
                   </div>
                 </div>
               )
@@ -3132,6 +3147,7 @@ function TabContent({
             onDeleteList={onDeleteList}
             onDeleteTodo={onDeleteTodo}
             onArchiveList={onArchiveList}
+            userId={userId}
           />
         )}
       </div>
@@ -4003,8 +4019,18 @@ export default function SmartHub({ session, household }) {
     await supabase.from("lists").update({ archived: false, archived_at: null }).eq("id", id)
   }
   async function handleToggleSharedList(list) {
-    setLists(p => p.map(l => l.id === list.id ? { ...l, shared: !l.shared } : l))
-    await supabase.from("lists").update({ shared: !list.shared }).eq("id", list.id)
+    const newShared = !list.shared
+    // Optimistic update
+    setLists(p => p.map(l => l.id === list.id ? { ...l, shared: newShared } : l))
+    const { error } = await supabase.from("lists").update({ shared: newShared }).eq("id", list.id)
+    if (error) {
+      console.warn("[toggleSharedList]", error.message)
+      // Roll back om RLS eller annat fel
+      setLists(p => p.map(l => l.id === list.id ? { ...l, shared: list.shared } : l))
+      alert(list.created_by === userId
+        ? "Kunde inte ändra: " + error.message
+        : "Bara ägaren av listan kan ändra delningsinställningar.")
+    }
   }
   // Endast EN lista i hushållet kan vara pinned åt gången. Toggla av om redan pinned.
   async function handleTogglePin(listId) {
@@ -4327,6 +4353,7 @@ export default function SmartHub({ session, household }) {
         date={dayModal.date}
         events={calEvents}
         persons={persons}
+        userId={userId}
         onClose={closeDayModal}
         onAddEvent={(d) => { closeDayModal(); openAddEvent(d) }}
         onEditEvent={(ev) => { closeDayModal(); openEditEvent(ev) }}
