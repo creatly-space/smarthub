@@ -2012,37 +2012,61 @@ function ShoppingCard({ items, onToggle, onAdd, fill, dark }) {
 }
 
 // Tabs överst i listor-tabben: Att göra / Inköp
+// Pill-segmented control (primär växling — tydlig "container" känsla)
 function ListsTopTabs({ mode, setMode, todoActiveCount, todoArchivedCount, shoppingItems }) {
   const shoppingActive = shoppingItems.filter(i => !i.done).length
-  const tabStyle = (active) => ({
-    flex: 1,
-    padding: "12px 14px",
-    background: active ? t.card : "transparent",
-    border: "none",
-    borderBottom: active ? `2px solid ${ACCENT.calendar}` : "2px solid transparent",
-    cursor: "pointer",
-    fontFamily: "Nunito, sans-serif",
-    fontWeight: active ? 700 : 500,
-    fontSize: 14,
-    color: active ? t.text : t.textSec,
-    transition: "all 0.15s",
-    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-  })
+  const tabs = [
+    { id: "todo", icon: ListChecks, label: "Att göra", count: todoActiveCount, color: ACCENT.calendar },
+    { id: "shopping", icon: ShoppingCart, label: "Inköp", count: shoppingActive, color: ACCENT.todo },
+  ]
   return (
-    <div style={{ display: "flex", marginBottom: 16, borderBottom: `1px solid ${t.cardBorder}` }}>
-      <button onClick={() => setMode("todo")} style={tabStyle(mode === "todo")}>
-        <ListChecks size={15} /> Att göra {todoActiveCount > 0 && <span style={{ fontSize: 11, color: t.textMuted, fontWeight: 500 }}>({todoActiveCount})</span>}
-      </button>
-      <button onClick={() => setMode("shopping")} style={tabStyle(mode === "shopping")}>
-        <ShoppingCart size={15} /> Inköp {shoppingActive > 0 && <span style={{ fontSize: 11, color: t.textMuted, fontWeight: 500 }}>({shoppingActive})</span>}
-      </button>
+    <div style={{
+      display: "flex", padding: 4, gap: 4,
+      background: t.inputBg,
+      border: `1px solid ${t.inputBorder}`,
+      borderRadius: 14,
+      marginBottom: 18,
+    }}>
+      {tabs.map(tab => {
+        const active = mode === tab.id
+        const Icon = tab.icon
+        return (
+          <button key={tab.id} onClick={() => setMode(tab.id)} style={{
+            flex: 1,
+            padding: "11px 14px",
+            background: active ? t.card : "transparent",
+            border: "none",
+            borderRadius: 10,
+            cursor: "pointer",
+            fontFamily: "Nunito, sans-serif",
+            fontWeight: 700,
+            fontSize: 14,
+            color: active ? tab.color : t.textSec,
+            boxShadow: active ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+            transition: "all 0.2s ease",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+          }}>
+            <Icon size={16} strokeWidth={active ? 2.5 : 1.8} />
+            <span>{tab.label}</span>
+            {tab.count > 0 && (
+              <span style={{
+                fontSize: 11, fontWeight: 700,
+                background: active ? `${tab.color}15` : "rgba(0,0,0,0.05)",
+                color: active ? tab.color : t.textMuted,
+                padding: "1px 7px", borderRadius: 8,
+                minWidth: 18, textAlign: "center",
+              }}>{tab.count}</span>
+            )}
+          </button>
+        )
+      })}
     </div>
   )
 }
 
 function ListItem({ item, listColor, onToggle, onDelete }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left" }}>
       <div onClick={onToggle} style={{
         width: 20, height: 20, borderRadius: 6, cursor: "pointer", flexShrink: 0,
         border: item.done ? "none" : `2px solid ${t.textMuted}`,
@@ -2050,12 +2074,12 @@ function ListItem({ item, listColor, onToggle, onDelete }) {
         display: "flex", alignItems: "center", justifyContent: "center",
       }}>{item.done && <Check size={12} color="#fff" strokeWidth={3} />}</div>
       <span onClick={onToggle} style={{
-        flex: 1, cursor: "pointer",
+        flex: 1, minWidth: 0, cursor: "pointer", textAlign: "left",
         fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 500,
         color: item.done ? t.textMuted : t.text,
         textDecoration: item.done ? "line-through" : "none",
       }}>{item.text}</span>
-      <button onClick={onDelete} style={{ background: "none", border: "none", cursor: "pointer", color: t.textMuted, padding: 2 }}>
+      <button onClick={onDelete} style={{ background: "none", border: "none", cursor: "pointer", color: t.textMuted, padding: 2, flexShrink: 0 }}>
         <X size={12} />
       </button>
     </div>
@@ -2259,28 +2283,32 @@ function ListsView({ lists, pinnedListId, onToggleItem, onTogglePin, onToggleSha
 // ════════════════════════════════════════════════
 //  ARCHIVE VIEW (söker bland arkiverade listor)
 // ════════════════════════════════════════════════
+// Subtila text-tabs (sekundärt filter — minimalistiska, blandar inte ihop med top-tabs)
 function ListTabSwitch({ activeCount, archivedCount, showArchive, setShowArchive }) {
   const tabStyle = (active) => ({
-    flex: 1,
-    padding: "10px 14px",
-    background: active ? t.card : "transparent",
+    background: "none",
     border: "none",
-    borderBottom: active ? `2px solid ${ACCENT.calendar}` : `2px solid transparent`,
+    padding: "6px 0",
     cursor: "pointer",
     fontFamily: "Nunito, sans-serif",
     fontWeight: active ? 700 : 500,
-    fontSize: 13,
-    color: active ? t.text : t.textSec,
+    fontSize: 12,
+    color: active ? t.text : t.textMuted,
+    borderBottom: active ? `2px solid ${t.text}` : "2px solid transparent",
+    marginBottom: -1,
     transition: "all 0.15s",
-    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+    display: "inline-flex", alignItems: "center", gap: 5,
+    letterSpacing: "0.02em",
   })
   return (
-    <div style={{ display: "flex", marginBottom: 16, borderBottom: `1px solid ${t.cardBorder}` }}>
+    <div style={{ display: "flex", gap: 20, marginBottom: 14, padding: "0 4px", borderBottom: `1px solid ${t.line}` }}>
       <button onClick={() => setShowArchive(false)} style={tabStyle(!showArchive)}>
-        <ListChecks size={14} /> Aktiva {activeCount > 0 && <span style={{ fontSize: 11, color: t.textMuted, fontWeight: 500 }}>({activeCount})</span>}
+        Aktiva
+        {activeCount > 0 && <span style={{ fontSize: 10, color: t.textMuted, fontWeight: 500 }}>· {activeCount}</span>}
       </button>
       <button onClick={() => setShowArchive(true)} style={tabStyle(showArchive)}>
-        <Archive size={14} /> Arkiverade {archivedCount > 0 && <span style={{ fontSize: 11, color: t.textMuted, fontWeight: 500 }}>({archivedCount})</span>}
+        Arkiverade
+        {archivedCount > 0 && <span style={{ fontSize: 10, color: t.textMuted, fontWeight: 500 }}>· {archivedCount}</span>}
       </button>
     </div>
   )
