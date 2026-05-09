@@ -6,8 +6,37 @@ import {
   CloudDrizzle, CloudFog, Snowflake, Monitor,
   Users, Lock, X, ChevronRight, ChevronLeft, User, LogOut, Sparkles,
   ThumbsUp, ThumbsDown, Grip, Copy, Trash2, Edit3, Mic, MapPin,
-  Archive, ArchiveRestore, Search, Repeat, Bell,
+  Archive, ArchiveRestore, Search, Repeat, Bell, ShoppingCart,
 } from "lucide-react"
+import groceriesData from "./data/groceries.json"
+
+// Plattlista över alla matvaror för fuzzy-matching, kategoriserad används för UI om vi vill
+const ALL_GROCERIES = (() => {
+  const out = []
+  for (const cat of Object.keys(groceriesData)) {
+    for (const item of groceriesData[cat]) {
+      out.push({ name: item, category: cat, lower: item.toLowerCase() })
+    }
+  }
+  return out
+})()
+function findGroceryMatches(query, max = 6) {
+  const q = (query || "").toLowerCase().trim()
+  if (q.length < 2) return []
+  const starts = []
+  const contains = []
+  for (const g of ALL_GROCERIES) {
+    if (g.lower === q) continue // skippa exakta matches (du vill ha förslag, inte vad du redan skrev)
+    if (g.lower.startsWith(q)) starts.push(g)
+    else if (g.lower.includes(q)) contains.push(g)
+    if (starts.length >= max) break
+  }
+  return [...starts, ...contains].slice(0, max)
+}
+function categoryOf(itemName) {
+  const found = ALL_GROCERIES.find(g => g.lower === itemName.toLowerCase())
+  return found?.category || null
+}
 
 // ════════════════════════════════════════════════
 //  DESIGN TOKENS (from v11 mockup)
@@ -1529,6 +1558,14 @@ function WeekCalendarView({ events, persons, onDayClick }) {
 function CalendarTab({ isMobile, events, persons, onAddEvent, onDeleteEvent, onOpenAddEvent, onOpenDayModal, userId }) {
   const [view, setView] = useState("month") // "month" | "week"
 
+  const eventsToday = useMemo(() => {
+    const today = new Date()
+    const dayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+    const dayEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59)
+    return expandEvents(events, dayStart, dayEnd)
+      .sort((a, b) => new Date(a.start_time) - new Date(b.start_time))
+  }, [events])
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
@@ -1682,6 +1719,324 @@ function TodoCard({ pinnedList, onToggle, fill, maxHeight, dark }) {
         </div>
       </div>
     </Card>
+  )
+}
+
+// ════════════════════════════════════════════════
+//  SHOPPING — autocomplete-input + lista + widget
+// ════════════════════════════════════════════════
+
+// Återanvändbar autocomplete-input för matvaror
+function GroceryAutocomplete({ onSubmit, placeholder = "Lägg till vara...", small, autoFocus, dark }) {
+  const [text, setText] = useState("")
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [highlightIdx, setHighlightIdx] = useState(0)
+  const inputRef = useRef(null)
+  const wrapRef = useRef(null)
+
+  const matches = useMemo(() => findGroceryMatches(text, 6), [text])
+  const showDropdown = showSuggestions && matches.length > 0 && text.length >= 2
+
+  // Stäng dropdown vid klick utanför
+  useEffect(() => {
+    if (!showDropdown) return
+    function onDocClick(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        setShowSuggestions(false)
+      }
+    }
+    document.addEventListener("mousedown", onDocClick)
+    return () => document.removeEventListener("mousedown", onDocClick)
+  }, [showDropdown])
+
+  function submit(value) {
+    const v = (value ?? text).trim()
+    if (!v) return
+    onSubmit(v)
+    setText("")
+    setShowSuggestions(false)
+    setHighlightIdx(0)
+    inputRef.current?.focus()
+  }
+
+  function onKeyDown(e) {
+    if (e.key === "Enter") {
+      e.preventDefault()
+      if (showDropdown && matches[highlightIdx]) {
+        submit(matches[highlightIdx].name)
+      } else {
+        submit()
+      }
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault()
+      setHighlightIdx(i => Math.min(i + 1, matches.length - 1))
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault()
+      setHighlightIdx(i => Math.max(i - 1, 0))
+    } else if (e.key === "Escape") {
+      setShowSuggestions(false)
+    }
+  }
+
+  const inputBg = dark ? "rgba(255,255,255,0.08)" : t.inputBg
+  const inputBorder = dark ? "rgba(255,255,255,0.15)" : t.inputBorder
+  const txtColor = dark ? "#e8eaf0" : t.text
+  const dropdownBg = dark ? "rgba(20,22,30,0.96)" : t.card
+  const dropdownBorder = dark ? "rgba(255,255,255,0.12)" : t.cardBorder
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative", flex: 1, minWidth: 0 }}>
+      <input
+        ref={inputRef}
+        value={text}
+        onChange={e => { setText(e.target.value); setShowSuggestions(true); setHighlightIdx(0) }}
+        onFocus={() => setShowSuggestions(true)}
+        onKeyDown={onKeyDown}
+        placeholder={placeholder}
+        autoFocus={autoFocus}
+        style={{
+          fontFamily: "Nunito, sans-serif", fontSize: small ? 12 : 14,
+          padding: small ? "6px 10px" : "8px 12px",
+          borderRadius: 8, border: `1px solid ${inputBorder}`,
+          background: inputBg, outline: "none", color: txtColor,
+          width: "100%", boxSizing: "border-box",
+        }}
+      />
+      {showDropdown && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 100,
+          background: dropdownBg, border: `1px solid ${dropdownBorder}`,
+          borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.15)",
+          backdropFilter: "blur(12px)",
+          maxHeight: 240, overflowY: "auto",
+        }}>
+          {matches.map((m, i) => (
+            <div
+              key={m.name}
+              onMouseDown={(e) => { e.preventDefault(); submit(m.name) }}
+              onMouseEnter={() => setHighlightIdx(i)}
+              style={{
+                padding: "8px 12px",
+                background: highlightIdx === i ? (dark ? "rgba(255,255,255,0.08)" : `${ACCENT.calendar}10`) : "transparent",
+                cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+              }}
+            >
+              <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 600, color: txtColor }}>{m.name}</span>
+              <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 10, color: dark ? "rgba(255,255,255,0.45)" : t.textMuted }}>{m.category}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Inköpslista: full vy med autocomplete + items
+function ShoppingList({ items, onAdd, onToggle, onDelete, onClearChecked }) {
+  const active = items.filter(i => !i.done)
+  const done = items.filter(i => i.done)
+
+  // Gruppera aktiva på kategori för bättre översikt
+  const byCategory = useMemo(() => {
+    const groups = {}
+    for (const it of active) {
+      const cat = it.category || categoryOf(it.text) || "Övrigt"
+      if (!groups[cat]) groups[cat] = []
+      groups[cat].push(it)
+    }
+    return groups
+  }, [active])
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <Card>
+        <div style={{ padding: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <ShoppingCart size={16} color={ACCENT.todo} />
+            <GroceryAutocomplete onSubmit={onAdd} placeholder="Skriv en vara, t.ex. mjölk..." />
+          </div>
+        </div>
+      </Card>
+
+      {active.length === 0 && done.length === 0 && (
+        <Card>
+          <div style={{ padding: 32, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+            <div style={{ fontSize: 36 }}>🛒</div>
+            <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 14, fontWeight: 700, color: t.text }}>Inköpslistan är tom</div>
+            <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textSec }}>Börja skriva ovanför så får du förslag.</div>
+          </div>
+        </Card>
+      )}
+
+      {Object.entries(byCategory).map(([cat, group]) => (
+        <Card key={cat}>
+          <div style={{ padding: 12 }}>
+            <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, fontWeight: 700, color: t.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", padding: "0 4px 8px" }}>
+              {cat} <span style={{ color: t.textMuted }}>({group.length})</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {group.map(item => (
+                <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 4px" }}>
+                  <div onClick={() => onToggle(item)} style={{
+                    width: 22, height: 22, borderRadius: 6, cursor: "pointer", flexShrink: 0,
+                    border: `2px solid ${t.textMuted}`, background: "transparent",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }} />
+                  <span onClick={() => onToggle(item)} style={{ flex: 1, cursor: "pointer", fontFamily: "Nunito, sans-serif", fontSize: 14, fontWeight: 500, color: t.text }}>{item.text}</span>
+                  <button onClick={() => onDelete(item)} style={{ background: "none", border: "none", cursor: "pointer", color: t.textMuted, padding: 4 }}>
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Card>
+      ))}
+
+      {done.length > 0 && (
+        <Card>
+          <div style={{ padding: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 4px 8px" }}>
+              <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, fontWeight: 700, color: t.textMuted, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Köpt ({done.length})
+              </div>
+              {onClearChecked && (
+                <button onClick={onClearChecked} style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "Nunito, sans-serif", fontSize: 11, fontWeight: 700, color: ACCENT.todo, padding: 0 }}>
+                  Rensa alla
+                </button>
+              )}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {done.map(item => (
+                <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 4px" }}>
+                  <div onClick={() => onToggle(item)} style={{
+                    width: 22, height: 22, borderRadius: 6, cursor: "pointer", flexShrink: 0,
+                    background: ACCENT.todo, display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    <Check size={14} color="#fff" strokeWidth={3} />
+                  </div>
+                  <span onClick={() => onToggle(item)} style={{ flex: 1, cursor: "pointer", fontFamily: "Nunito, sans-serif", fontSize: 14, fontWeight: 500, color: t.textMuted, textDecoration: "line-through" }}>{item.text}</span>
+                  <button onClick={() => onDelete(item)} style={{ background: "none", border: "none", cursor: "pointer", color: t.textMuted, padding: 4 }}>
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Card>
+      )}
+    </div>
+  )
+}
+
+// Kompakt widget för Hem-vy och TV
+function ShoppingCard({ items, onToggle, onAdd, fill, dark }) {
+  const active = items.filter(i => !i.done)
+  const done = items.filter(i => i.done)
+  const [showQuickAdd, setShowQuickAdd] = useState(false)
+  const txtColor = dark ? "#e8eaf0" : t.text
+  const txtSec = dark ? "rgba(255,255,255,0.6)" : t.textSec
+  const txtMuted = dark ? "rgba(255,255,255,0.35)" : t.textMuted
+  const containerStyle = fill
+    ? { display: "flex", flexDirection: "column", gap: 6, flex: 1, overflowY: "auto", minHeight: 0 }
+    : { display: "flex", flexDirection: "column", gap: 6, flex: 1, overflowY: "auto", maxHeight: 280 }
+
+  function handleAdd(text) {
+    onAdd(text)
+    setShowQuickAdd(false)
+  }
+
+  return (
+    <Card dark={dark} accent={ACCENT.todo} style={fill ? { flex: 1, minHeight: 0 } : {}}>
+      <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 8 }}>
+          <Label color={ACCENT.todo} icon={ShoppingCart}>Inköp</Label>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: txtSec }}>{done.length}/{items.length}</span>
+            {onAdd && (
+              <button onClick={() => setShowQuickAdd(s => !s)} style={{
+                width: 24, height: 24, borderRadius: 12, border: "none",
+                background: showQuickAdd ? ACCENT.todo : `${ACCENT.todo}25`,
+                color: showQuickAdd ? "#fff" : ACCENT.todo,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer", flexShrink: 0,
+              }} title="Lägg till vara">
+                {showQuickAdd ? <X size={14} /> : <Plus size={14} />}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {showQuickAdd && onAdd && (
+          <div style={{ marginBottom: 8 }}>
+            <GroceryAutocomplete onSubmit={handleAdd} placeholder="Vara..." small autoFocus dark={dark} />
+          </div>
+        )}
+
+        <div style={containerStyle}>
+          {items.length === 0 && (
+            <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: txtMuted, fontStyle: "italic" }}>Tom inköpslista</span>
+          )}
+          {active.slice(0, fill ? 12 : 6).map(item => (
+            <div key={item.id} onClick={() => onToggle(item)} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", flexShrink: 0 }}>
+              <div style={{
+                width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+                border: `2px solid ${txtMuted}`, background: "transparent",
+              }} />
+              <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 500, color: txtColor }}>{item.text}</span>
+            </div>
+          ))}
+          {active.length > (fill ? 12 : 6) && (
+            <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: txtMuted, fontStyle: "italic", marginTop: 2 }}>
+              +{active.length - (fill ? 12 : 6)} till
+            </span>
+          )}
+          {done.length > 0 && (
+            <div style={{ marginTop: 4, paddingTop: 4, opacity: 0.6 }}>
+              {done.slice(0, fill ? 4 : 2).map(item => (
+                <div key={item.id} onClick={() => onToggle(item)} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", padding: "2px 0" }}>
+                  <div style={{
+                    width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+                    background: ACCENT.todo, display: "flex", alignItems: "center", justifyContent: "center",
+                  }}><Check size={11} color="#fff" strokeWidth={3} /></div>
+                  <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, fontWeight: 500, color: txtMuted, textDecoration: "line-through" }}>{item.text}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+// Tabs överst i listor-tabben: Att göra / Inköp
+function ListsTopTabs({ mode, setMode, todoActiveCount, todoArchivedCount, shoppingItems }) {
+  const shoppingActive = shoppingItems.filter(i => !i.done).length
+  const tabStyle = (active) => ({
+    flex: 1,
+    padding: "12px 14px",
+    background: active ? t.card : "transparent",
+    border: "none",
+    borderBottom: active ? `2px solid ${ACCENT.calendar}` : "2px solid transparent",
+    cursor: "pointer",
+    fontFamily: "Nunito, sans-serif",
+    fontWeight: active ? 700 : 500,
+    fontSize: 14,
+    color: active ? t.text : t.textSec,
+    transition: "all 0.15s",
+    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+  })
+  return (
+    <div style={{ display: "flex", marginBottom: 16, borderBottom: `1px solid ${t.cardBorder}` }}>
+      <button onClick={() => setMode("todo")} style={tabStyle(mode === "todo")}>
+        <ListChecks size={15} /> Att göra {todoActiveCount > 0 && <span style={{ fontSize: 11, color: t.textMuted, fontWeight: 500 }}>({todoActiveCount})</span>}
+      </button>
+      <button onClick={() => setMode("shopping")} style={tabStyle(mode === "shopping")}>
+        <ShoppingCart size={15} /> Inköp {shoppingActive > 0 && <span style={{ fontSize: 11, color: t.textMuted, fontWeight: 500 }}>({shoppingActive})</span>}
+      </button>
+    </div>
   )
 }
 
@@ -3138,6 +3493,9 @@ function TabContent({
   // activity + countdowns + meal history
   activity, countdowns, onAddCountdown, onDeleteCountdown, onTogglePinCountdown,
   householdIdProp, currentWeekStart,
+  // shopping
+  shoppingItems, onAddShoppingItem, onToggleShoppingItem, onDeleteShoppingItem, onClearCheckedShopping,
+  listsTopTab, setListsTopTab,
 }) {
   const pad = isMobile ? "16px 16px 16px" : "24px 28px"
   if (tab === "hem") {
@@ -3183,31 +3541,51 @@ function TabContent({
     return (
       <div style={{ padding: pad }}>
         <h2 style={{ fontFamily: "Comfortaa, sans-serif", fontSize: isMobile ? 22 : 24, fontWeight: 700, color: t.text, margin: "0 0 14px" }}>Listor</h2>
-        <ListTabSwitch
-          activeCount={listsWithItems.length}
-          archivedCount={archivedLists.length}
-          showArchive={showArchive}
-          setShowArchive={setShowArchive}
+        <ListsTopTabs
+          mode={listsTopTab}
+          setMode={setListsTopTab}
+          todoActiveCount={listsWithItems.length}
+          todoArchivedCount={archivedLists.length}
+          shoppingItems={shoppingItems}
         />
-        {showArchive ? (
-          <ArchiveView
-            archivedLists={archivedLists}
-            onRestore={onRestoreList}
-            onDeletePermanent={onDeleteList}
-          />
-        ) : (
-          <ListsView
-            lists={listsWithItems}
-            pinnedListId={pinnedListId}
-            onToggleItem={onToggleItem}
-            onTogglePin={onTogglePin}
-            onToggleShared={onToggleShared}
-            onAddTodo={onAddTodo}
-            onAddList={onAddList}
-            onDeleteList={onDeleteList}
-            onDeleteTodo={onDeleteTodo}
-            onArchiveList={onArchiveList}
-            userId={userId}
+        {listsTopTab === "todo" && (
+          <>
+            <ListTabSwitch
+              activeCount={listsWithItems.length}
+              archivedCount={archivedLists.length}
+              showArchive={showArchive}
+              setShowArchive={setShowArchive}
+            />
+            {showArchive ? (
+              <ArchiveView
+                archivedLists={archivedLists}
+                onRestore={onRestoreList}
+                onDeletePermanent={onDeleteList}
+              />
+            ) : (
+              <ListsView
+                lists={listsWithItems}
+                pinnedListId={pinnedListId}
+                onToggleItem={onToggleItem}
+                onTogglePin={onTogglePin}
+                onToggleShared={onToggleShared}
+                onAddTodo={onAddTodo}
+                onAddList={onAddList}
+                onDeleteList={onDeleteList}
+                onDeleteTodo={onDeleteTodo}
+                onArchiveList={onArchiveList}
+                userId={userId}
+              />
+            )}
+          </>
+        )}
+        {listsTopTab === "shopping" && (
+          <ShoppingList
+            items={shoppingItems}
+            onAdd={onAddShoppingItem}
+            onToggle={onToggleShoppingItem}
+            onDelete={onDeleteShoppingItem}
+            onClearChecked={onClearCheckedShopping}
           />
         )}
       </div>
@@ -3252,7 +3630,7 @@ function MobileNav({ tab, setTab, themeColor = ACCENT.calendar }) {
     { id: "mer", icon: MoreHorizontal, label: "Mer" },
   ]
   return (
-    <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: t.card, borderTop: `1px solid ${t.cardBorder}`, display: "flex", justifyContent: "space-around", alignItems: "center", padding: "8px 0", zIndex: 100 }}>
+    <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: t.card, borderTop: `1px solid ${t.cardBorder}`, display: "flex", justifyContent: "space-around", alignItems: "center", padding: "10px 0 16px", paddingBottom: "max(16px, env(safe-area-inset-bottom, 16px))", zIndex: 100 }}>
       {tabs.map(({ id, icon: Icon, label }) => (
         <button key={id} onClick={() => setTab(id)} style={{
           background: "none", border: "none", cursor: "pointer",
@@ -3320,6 +3698,7 @@ function DesktopSidebar({ tab, setTab, session, weather, household, themeColor =
 const TV_SLOT_OPTIONS = [
   { id: "calendar",  label: "Kalender", color: ACCENT.calendar, icon: CalendarDays },
   { id: "todo",      label: "Att göra", color: ACCENT.todo,     icon: ListChecks },
+  { id: "shopping",  label: "Inköp",    color: ACCENT.todo,     icon: ShoppingCart },
   { id: "meal",      label: "Matsedel", color: ACCENT.meal,     icon: UtensilsCrossed },
   { id: "events",    label: "Dagens händelser", color: ACCENT.event, icon: CalendarDays },
   { id: "countdown", label: "Nedräkning", color: "#db2777", icon: Sparkles },
@@ -3395,6 +3774,7 @@ const LAYOUT_PRESETS = {
 function renderTvSlotWidget(type, p) {
   if (type === "calendar") return <CalendarWidget events={p.calEvents} persons={p.persons} fill onDayClick={p.onDayClick} dark={p.dark} />
   if (type === "todo")     return <TodoCard pinnedList={p.pinnedList} onToggle={p.onToggleItem} fill dark={p.dark} />
+  if (type === "shopping") return <ShoppingCard items={p.shoppingItems || []} onToggle={p.onToggleShoppingItem} onAdd={p.onAddShoppingItem} fill dark={p.dark} />
   if (type === "meal")     return <MealCard fill mealsByWeekday={p.mealsByWeekday} mealTagsLocal={p.mealTagsLocal} onSetMealText={() => {}} onSetMealTag={() => {}} dark={p.dark} />
   if (type === "events")   return <TvEventsCard events={p.calEvents} persons={p.persons} dark={p.dark} />
   if (type === "countdown") return <TvCountdownCard countdowns={p.countdowns} dark={p.dark} />
@@ -3549,10 +3929,10 @@ function TvLayoutGrid({ layoutKey, slots, widgetProps, slotOverlay }) {
   )
 }
 
-function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, weather, slots, slotOverlay, onDayClick, photoUrl, countdowns, dark }) {
+function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, weather, slots, slotOverlay, onDayClick, photoUrl, countdowns, shoppingItems, onAddShoppingItem, onToggleShoppingItem, dark }) {
   const s = { ...DEFAULT_TV_SLOTS, ...(slots || {}) }
   const layoutKey = s.layout || "standard"
-  const widgetProps = { persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, onDayClick, countdowns, dark }
+  const widgetProps = { persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, onDayClick, countdowns, shoppingItems, onAddShoppingItem, onToggleShoppingItem, dark }
 
   // Färgsystem för dark mode på TV
   const tvBg = dark ? "#0a0b14" : t.bg
@@ -3696,6 +4076,7 @@ export default function SmartHub({ session, household }) {
   // ── UI state ──
   const [tab, setTab] = useState("hem")
   const [showArchive, setShowArchive] = useState(false)
+  const [listsTopTab, setListsTopTab] = useState("todo")
   const [themeColor, setThemeColorState] = useState(() => getThemeColor())
   function setThemeColor(c) {
     setThemeColorState(c)
@@ -3722,6 +4103,7 @@ export default function SmartHub({ session, household }) {
   const [members, setMembers] = useState([])
   const [activity, setActivity] = useState([]) // senaste aktiviteter i hushållet
   const [countdowns, setCountdowns] = useState([])
+  const [shoppingItems, setShoppingItems] = useState([])
   const [weather, setWeather] = useState(null)
 
   // ── v11 stub state (no Supabase persistence yet — see MIGRATIONS.sql) ──
@@ -3928,6 +4310,30 @@ export default function SmartHub({ session, household }) {
         if (p.eventType === "INSERT") return prev.some(c => c.id === p.new.id) ? prev : [...prev, p.new].sort((a, b) => a.target_date.localeCompare(b.target_date))
         if (p.eventType === "UPDATE") return prev.map(c => c.id === p.new.id ? p.new : c)
         if (p.eventType === "DELETE") return prev.filter(c => c.id !== p.old.id)
+        return prev
+      })
+    }).subscribe()
+    return () => { cancelled = true; supabase.removeChannel(ch) }
+  }, [householdId])
+
+  // ── Load + subscribe: shopping_items ──
+  useEffect(() => {
+    if (!householdId) return
+    let cancelled = false
+    async function load() {
+      const { data } = await supabase.from("shopping_items")
+        .select("*").eq("household_id", householdId)
+        .order("created_at", { ascending: true })
+      if (!cancelled && data) setShoppingItems(data)
+    }
+    load()
+    const ch = supabase.channel("shopping:" + householdId).on("postgres_changes", {
+      event: "*", schema: "public", table: "shopping_items", filter: "household_id=eq." + householdId,
+    }, p => {
+      setShoppingItems(prev => {
+        if (p.eventType === "INSERT") return prev.some(i => i.id === p.new.id) ? prev : [...prev, p.new]
+        if (p.eventType === "UPDATE") return prev.map(i => i.id === p.new.id ? p.new : i)
+        if (p.eventType === "DELETE") return prev.filter(i => i.id !== p.old.id)
         return prev
       })
     }).subscribe()
@@ -4220,6 +4626,48 @@ export default function SmartHub({ session, household }) {
       household_id: householdId, widgets, updated_at: new Date().toISOString(),
     }, { onConflict: "household_id" })
   }
+  // ── Shopping items ──
+  async function handleAddShoppingItem(text) {
+    const cleaned = text.trim()
+    if (!cleaned) return
+    const cat = categoryOf(cleaned)
+    const tmp = {
+      id: "tmp-" + Date.now(), household_id: householdId,
+      text: cleaned, done: false, category: cat,
+      added_by: userId, created_at: new Date().toISOString(),
+    }
+    setShoppingItems(p => [...p, tmp])
+    const { data, error } = await supabase.from("shopping_items").insert({
+      household_id: householdId, text: cleaned, done: false,
+      category: cat, added_by: userId,
+    }).select().single()
+    if (error) {
+      console.error("[addShoppingItem]", error)
+      setShoppingItems(p => p.filter(i => i.id !== tmp.id))
+      return
+    }
+    setShoppingItems(p => p.map(i => i.id === tmp.id ? data : i))
+    logActivity("add_shopping", "shopping", data.id, `lade till "${cleaned}" i inköpslistan`)
+  }
+  async function handleToggleShoppingItem(item) {
+    const nd = !item.done
+    setShoppingItems(p => p.map(i => i.id === item.id ? { ...i, done: nd, completed_at: nd ? new Date().toISOString() : null } : i))
+    const { error } = await supabase.from("shopping_items").update({
+      done: nd, completed_at: nd ? new Date().toISOString() : null,
+    }).eq("id", item.id)
+    if (error) setShoppingItems(p => p.map(i => i.id === item.id ? item : i))
+  }
+  async function handleDeleteShoppingItem(item) {
+    setShoppingItems(p => p.filter(i => i.id !== item.id))
+    await supabase.from("shopping_items").delete().eq("id", item.id)
+  }
+  async function handleClearCheckedShopping() {
+    const doneIds = shoppingItems.filter(i => i.done).map(i => i.id)
+    if (doneIds.length === 0) return
+    setShoppingItems(p => p.filter(i => !i.done))
+    await supabase.from("shopping_items").delete().in("id", doneIds)
+  }
+
   async function handleAddCountdown(c) {
     // Optimistic: lägg till direkt så användaren ser feedback omgående
     const tmp = {
@@ -4486,6 +4934,9 @@ export default function SmartHub({ session, household }) {
           slots={tvSlots}
           photoUrl={tvPhotoUrl}
           countdowns={countdowns}
+          shoppingItems={shoppingItems}
+          onAddShoppingItem={handleAddShoppingItem}
+          onToggleShoppingItem={handleToggleShoppingItem}
           onDayClick={openDayModal}
         />
         {liftedModals}
@@ -4521,6 +4972,9 @@ export default function SmartHub({ session, household }) {
       mealsByWeekday, mealTagsLocal, weather,
       photoUrl: tvPhotoUrl,
       countdowns,
+      shoppingItems,
+      onAddShoppingItem: handleAddShoppingItem,
+      onToggleShoppingItem: handleToggleShoppingItem,
     },
     tvSlots, onSaveTvSlots: handleSaveTvSlots,
     tvPhotoUrl, onSaveTvPhoto: handleSaveTvPhoto, onUploadTvPhoto: handleUploadTvPhoto,
@@ -4528,6 +4982,12 @@ export default function SmartHub({ session, household }) {
     activity,
     countdowns, onAddCountdown: handleAddCountdown, onDeleteCountdown: handleDeleteCountdown, onTogglePinCountdown: handleTogglePinCountdown,
     householdIdProp: householdId, currentWeekStart,
+    shoppingItems,
+    onAddShoppingItem: handleAddShoppingItem,
+    onToggleShoppingItem: handleToggleShoppingItem,
+    onDeleteShoppingItem: handleDeleteShoppingItem,
+    onClearCheckedShopping: handleClearCheckedShopping,
+    listsTopTab, setListsTopTab,
   }
 
   // ─── Mobile view ───
@@ -4536,7 +4996,7 @@ export default function SmartHub({ session, household }) {
       <>
         {fonts}{globalCss}
         <div style={{ height: "100dvh", background: t.bg, display: "flex", flexDirection: "column", position: "relative", fontFamily: "Nunito, sans-serif", overflow: "hidden" }}>
-          <div style={{ flex: 1, overflow: "auto", paddingBottom: 70 }}>
+          <div style={{ flex: 1, overflow: "auto", paddingBottom: 84 }}>
             <TabContent {...tabContentProps} />
           </div>
           <MobileNav tab={tab} setTab={setTab} themeColor={themeColor} />
