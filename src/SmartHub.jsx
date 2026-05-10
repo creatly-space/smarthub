@@ -7,7 +7,7 @@ import {
   CloudDrizzle, CloudFog, Snowflake, Monitor,
   Users, Lock, X, ChevronRight, ChevronLeft, User, LogOut, Sparkles,
   ThumbsUp, ThumbsDown, Grip, Copy, Trash2, Edit3, Mic, MapPin,
-  Archive, ArchiveRestore, Search, Repeat, Bell, ShoppingCart,
+  Archive, ArchiveRestore, Search, Repeat, Bell, BellOff, ShoppingCart,
 } from "lucide-react"
 import groceriesData from "./data/groceries.json"
 
@@ -60,6 +60,25 @@ function getThemeColor() {
   if (typeof window === "undefined") return ACCENT.calendar
   const saved = localStorage.getItem("smarthub:themeColor")
   return saved || ACCENT.calendar
+}
+
+// VAPID public key — sätts via env-variabel vid build (Vite: VITE_VAPID_PUBLIC_KEY)
+const VAPID_PUBLIC_KEY = (typeof import.meta !== "undefined" && import.meta.env?.VITE_VAPID_PUBLIC_KEY) || ""
+
+// Web Push helpers
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - base64String.length % 4) % 4)
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/")
+  const rawData = atob(base64)
+  const outputArray = new Uint8Array(rawData.length)
+  for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i)
+  return outputArray
+}
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer)
+  let binary = ""
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
+  return btoa(binary)
 }
 const PERSON_PALETTE = ["#7c3aed", "#db2777", "#0ea5e9", "#059669", "#d97706", "#dc2626"]
 const LIST_COLORS = ["#7c3aed", "#059669", "#d97706", "#2563eb", "#dc2626", "#db2777", "#0d9488", "#ea580c"]
@@ -2940,7 +2959,7 @@ function SectionHeader({ title, onBack }) {
   )
 }
 
-function ProfileSection({ onBack, session, themeColor, setThemeColor, displayName, onSaveDisplayName }) {
+function ProfileSection({ onBack, session, themeColor, setThemeColor, displayName, onSaveDisplayName, pushStatus, onEnablePush, onDisablePush }) {
   const email = session?.user?.email || ""
   const initial = (displayName?.[0] || email[0] || "?").toUpperCase()
   const [name, setName] = useState(displayName || "")
@@ -2981,6 +3000,40 @@ function ProfileSection({ onBack, session, themeColor, setThemeColor, displayNam
               <input value={email} disabled style={{ ...inputStyle, fontSize: 14, width: "100%", marginTop: 4, opacity: 0.6 }} />
             </div>
           </div>
+        </div>
+      </Card>
+
+      {/* Push-notiser */}
+      <Card style={{ marginBottom: 12 }}>
+        <div style={{ padding: 16 }}>
+          <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 4 }}>🔔 Notiser</div>
+          {pushStatus === "unsupported" && (
+            <p style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textMuted, margin: "0 0 8px" }}>
+              Den här webbläsaren stödjer inte push-notiser.
+            </p>
+          )}
+          {pushStatus === "denied" && (
+            <p style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: "#dc2626", margin: "0 0 8px" }}>
+              Notiser blockerade. Aktivera i webbläsarens inställningar.
+            </p>
+          )}
+          {pushStatus !== "unsupported" && pushStatus !== "denied" && (
+            <p style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textSec, margin: "0 0 12px" }}>
+              {pushStatus === "subscribed"
+                ? "Du får notiser om event-påminnelser och när andra gör saker i hushållet."
+                : "Aktivera så får du notiser för event-påminnelser och hushållsaktivitet."}
+              {" "}<strong>iPhone:</strong> Lägg till på hemskärm först (Safari → Dela → Lägg till på hemskärm).
+            </p>
+          )}
+          {pushStatus === "subscribed" ? (
+            <Btn small outline color="#dc2626" onClick={onDisablePush}>
+              <BellOff size={12} /> Stäng av notiser
+            </Btn>
+          ) : pushStatus !== "unsupported" && pushStatus !== "denied" ? (
+            <Btn small color={ACCENT.calendar} onClick={onEnablePush}>
+              <Bell size={12} /> Aktivera notiser
+            </Btn>
+          ) : null}
         </div>
       </Card>
 
@@ -3526,7 +3579,7 @@ function AccountSection({ onBack }) {
   )
 }
 
-function SettingsTab({ isMobile, session, household, members, foodPrefs, setFoodPrefs, onCreateInvite, tvData, tvSlots, onSaveTvSlots, tvPhotoUrl, onSaveTvPhoto, onUploadTvPhoto, userId, themeColor, setThemeColor, displayName, onSaveDisplayName }) {
+function SettingsTab({ isMobile, session, household, members, foodPrefs, setFoodPrefs, onCreateInvite, tvData, tvSlots, onSaveTvSlots, tvPhotoUrl, onSaveTvPhoto, onUploadTvPhoto, userId, themeColor, setThemeColor, displayName, onSaveDisplayName, pushStatus, onEnablePush, onDisablePush }) {
   const [activeSection, setActiveSection] = useState(null)
   const sections = [
     { id: "profile", icon: User, label: "Profil", desc: "Namn, profilbild" },
@@ -3536,7 +3589,7 @@ function SettingsTab({ isMobile, session, household, members, foodPrefs, setFood
     { id: "account", icon: LogOut, label: "Konto", desc: "Logga ut" },
   ]
   if (activeSection === "tv") return <TvEditorSection onBack={() => setActiveSection(null)} isMobile={isMobile} tvData={tvData} tvSlots={tvSlots} onSaveTvSlots={onSaveTvSlots} tvPhotoUrl={tvPhotoUrl} onSaveTvPhoto={onSaveTvPhoto} onUploadTvPhoto={onUploadTvPhoto} />
-  if (activeSection === "profile") return <ProfileSection onBack={() => setActiveSection(null)} session={session} themeColor={themeColor} setThemeColor={setThemeColor} displayName={displayName} onSaveDisplayName={onSaveDisplayName} />
+  if (activeSection === "profile") return <ProfileSection onBack={() => setActiveSection(null)} session={session} themeColor={themeColor} setThemeColor={setThemeColor} displayName={displayName} onSaveDisplayName={onSaveDisplayName} pushStatus={pushStatus} onEnablePush={onEnablePush} onDisablePush={onDisablePush} />
   if (activeSection === "household") return <HouseholdSection onBack={() => setActiveSection(null)} household={household} members={members} userId={userId} onCreateInvite={onCreateInvite} />
   if (activeSection === "food") return <FoodPrefsSection onBack={() => setActiveSection(null)} foodPrefs={foodPrefs} setFoodPrefs={setFoodPrefs} />
   if (activeSection === "account") return <AccountSection onBack={() => setActiveSection(null)} />
@@ -3790,6 +3843,7 @@ function TabContent({
   tvPhotoUrl, onSaveTvPhoto, onUploadTvPhoto,
   themeColor, setThemeColor,
   displayName, onSaveDisplayName,
+  pushStatus, onEnablePush, onDisablePush,
   // activity + countdowns + meal history
   activity, countdowns, onAddCountdown, onDeleteCountdown, onTogglePinCountdown,
   householdIdProp, currentWeekStart,
@@ -3912,7 +3966,8 @@ function TabContent({
         tvPhotoUrl={tvPhotoUrl} onSaveTvPhoto={onSaveTvPhoto} onUploadTvPhoto={onUploadTvPhoto}
         userId={userId}
         themeColor={themeColor} setThemeColor={setThemeColor}
-        displayName={displayName} onSaveDisplayName={onSaveDisplayName} />
+        displayName={displayName} onSaveDisplayName={onSaveDisplayName}
+        pushStatus={pushStatus} onEnablePush={onEnablePush} onDisablePush={onDisablePush} />
     </div>
   )
   return null
@@ -4378,6 +4433,7 @@ export default function SmartHub({ session, household }) {
   const [tab, setTab] = useState("hem")
   const [showArchive, setShowArchive] = useState(false)
   const [listsTopTab, setListsTopTab] = useState("todo")
+  const [pushStatus, setPushStatus] = useState("unknown") // "unknown" | "denied" | "granted-no-sub" | "subscribed" | "unsupported"
   const [themeColor, setThemeColorState] = useState(() => getThemeColor())
   function setThemeColor(c) {
     setThemeColorState(c)
@@ -5049,6 +5105,75 @@ export default function SmartHub({ session, household }) {
       }
     }
   }
+  // ── Web Push (PWA-notiser) ──
+  // Registrera service worker + kolla nuvarande prenumerationsstatus vid mount
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setPushStatus("unsupported")
+      return
+    }
+    navigator.serviceWorker.register("/sw.js").catch(e => console.warn("[sw register]", e))
+    async function checkStatus() {
+      try {
+        if (Notification.permission === "denied") return setPushStatus("denied")
+        const reg = await navigator.serviceWorker.ready
+        const sub = await reg.pushManager.getSubscription()
+        if (sub) setPushStatus("subscribed")
+        else if (Notification.permission === "granted") setPushStatus("granted-no-sub")
+        else setPushStatus("unknown")
+      } catch (e) { console.warn("[push status]", e) }
+    }
+    checkStatus()
+  }, [])
+
+  async function handleEnablePush() {
+    if (!VAPID_PUBLIC_KEY) {
+      alert("VAPID_PUBLIC_KEY saknas — kontakta admin (env-variabel inte satt).")
+      return
+    }
+    try {
+      const perm = await Notification.requestPermission()
+      if (perm !== "granted") { setPushStatus("denied"); return }
+      const reg = await navigator.serviceWorker.ready
+      let sub = await reg.pushManager.getSubscription()
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        })
+      }
+      // Spara prenumeration i Supabase
+      const json = sub.toJSON()
+      const { error } = await supabase.from("push_subscriptions").upsert({
+        user_id: userId,
+        endpoint: json.endpoint,
+        p256dh: json.keys.p256dh,
+        auth: json.keys.auth,
+        user_agent: navigator.userAgent.slice(0, 200),
+        last_used_at: new Date().toISOString(),
+      }, { onConflict: "user_id,endpoint" })
+      if (error) throw error
+      setPushStatus("subscribed")
+    } catch (e) {
+      console.error("[enable push]", e)
+      alert("Kunde inte aktivera notiser: " + (e.message || e))
+    }
+  }
+  async function handleDisablePush() {
+    try {
+      const reg = await navigator.serviceWorker.ready
+      const sub = await reg.pushManager.getSubscription()
+      if (sub) {
+        await supabase.from("push_subscriptions").delete().eq("user_id", userId).eq("endpoint", sub.endpoint)
+        await sub.unsubscribe()
+      }
+      setPushStatus("granted-no-sub")
+    } catch (e) {
+      console.error("[disable push]", e)
+    }
+  }
+
   async function handleCreateInvite() {
     const code = genCode()
     const { error } = await supabase.from("invites").insert({ household_id: householdId, code, created_by: userId })
@@ -5295,6 +5420,7 @@ export default function SmartHub({ session, household }) {
     themeColor, setThemeColor,
     displayName: members.find(m => m.user_id === userId)?.display_name || "",
     onSaveDisplayName: handleSaveDisplayName,
+    pushStatus, onEnablePush: handleEnablePush, onDisablePush: handleDisablePush,
     activity,
     countdowns, onAddCountdown: handleAddCountdown, onDeleteCountdown: handleDeleteCountdown, onTogglePinCountdown: handleTogglePinCountdown,
     householdIdProp: householdId, currentWeekStart,
