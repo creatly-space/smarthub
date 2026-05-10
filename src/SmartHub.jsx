@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useEffect, useMemo, useRef, useLayoutEffect } from "react"
+import { createPortal } from "react-dom"
 import { supabase } from "./lib/supabase"
 import {
   Home, CalendarDays, ListChecks, UtensilsCrossed, MoreHorizontal, Settings,
@@ -255,9 +256,10 @@ function expandRecurring(event, from, to) {
   const fromMs = from.getTime()
   const toMs = to.getTime()
   if (!event.recurrence_rule || !event.recurrence_rule.freq) {
-    // Vanlig (icke-återkommande) händelse: ta med endast om den infaller inom fönstret
+    // Vanlig händelse: ta med om den OVERLAPPAR fönstret (start ≤ to OCH end ≥ from)
     const startMs = new Date(event.start_time).getTime()
-    if (startMs >= fromMs && startMs <= toMs) return [event]
+    const endMs = new Date(event.end_time || event.start_time).getTime()
+    if (startMs <= toMs && endMs >= fromMs) return [event]
     return []
   }
   const rule = event.recurrence_rule
@@ -435,25 +437,48 @@ function CalendarWidget({ events, persons, fill, compact, large, onDayClick, dar
   if (week.length > 0) { while (week.length < 7) week.push(null); weeks.push(week) }
 
   const eventsForView = useMemo(() => {
-    // Expandera återkommande events över hela visnings-månaden
     const monthStart = new Date(vy, vm, 1)
     const monthEnd = new Date(vy, vm + 1, 0, 23, 59, 59)
     const expanded = expandEvents(events, monthStart, monthEnd)
     const out = {}
     expanded.forEach(ev => {
-      const d = new Date(ev.start_time)
-      if (d.getFullYear() === vy && d.getMonth() === vm) {
-        const day = d.getDate()
-        if (!out[day]) out[day] = []
-        const p = getPersonForEvent(ev, persons)
-        out[day].push({
-          id: ev.id, time: fmtTime(ev.start_time), title: ev.title,
-          color: p.color, name: p.name,
-          recurring: !!ev.master_id,
-        })
+      const start = new Date(ev.start_time)
+      const end = new Date(ev.end_time)
+      const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate())
+      const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate())
+      const isMultiDay = startDay.getTime() !== endDay.getTime()
+      const p = getPersonForEvent(ev, persons)
+      // Iterera genom varje dag eventet täcker (för flerdagsevents)
+      let cursor = new Date(startDay)
+      let safety = 0
+      while (cursor <= endDay && safety < 366) {
+        safety++
+        if (cursor.getFullYear() === vy && cursor.getMonth() === vm) {
+          const day = cursor.getDate()
+          if (!out[day]) out[day] = []
+          out[day].push({
+            id: ev.id + "_d" + fmtDate(cursor),
+            time: ev.all_day ? "" : fmtTime(ev.start_time),
+            title: ev.title,
+            color: p.color, name: p.name,
+            recurring: !!ev.master_id,
+            all_day: !!ev.all_day,
+            multi_day: isMultiDay,
+            is_first_day: cursor.getTime() === startDay.getTime(),
+            is_last_day: cursor.getTime() === endDay.getTime(),
+          })
+        }
+        cursor = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() + 1)
       }
     })
-    Object.keys(out).forEach(k => out[k].sort((a, b) => a.time.localeCompare(b.time)))
+    // Sortera: all-day först, sen multi-day, sen efter tid
+    Object.keys(out).forEach(k => {
+      out[k].sort((a, b) => {
+        if (a.all_day !== b.all_day) return a.all_day ? -1 : 1
+        if (a.multi_day !== b.multi_day) return a.multi_day ? -1 : 1
+        return (a.time || "").localeCompare(b.time || "")
+      })
+    })
     return out
   }, [events, vy, vm, persons])
 
@@ -523,22 +548,41 @@ function CalendarWidget({ events, persons, fill, compact, large, onDayClick, dar
                         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                       }}>{holiday.name}</div>
                     )}
-                    {dayEvents.slice(0, large ? 2 : fill ? 2 : 1).map((ev) => (
-                      <div key={ev.id} style={{
-                        fontSize: large ? 11 : compact ? 6 : 7,
-                        fontFamily: "Nunito, sans-serif", fontWeight: 700,
-                        color: ev.color, background: `${ev.color}15`,
-                        borderRadius: large ? 4 : 3,
-                        padding: large ? "2px 5px" : "0px 2px",
-                        lineHeight: 1.3,
-                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                        marginBottom: large ? 2 : 1,
-                        display: "flex", alignItems: "center", gap: 3,
-                      }}>
-                        {ev.recurring && <Repeat size={large ? 9 : compact ? 5 : 6} style={{ flexShrink: 0 }} />}
-                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{large ? ev.title : `${ev.time} ${ev.title}`}</span>
-                      </div>
-                    ))}
+                    {dayEvents.slice(0, large ? 2 : fill ? 2 : 1).map((ev) => {
+                      // All-day eller multi-day = "bar"-stil (fylld bakgrund, ingen tid visad)
+                      const isBar = ev.all_day || ev.multi_day
+                      // Avrundning bara på första/sista dagen för multi-day, så det ser sammanhängande ut
+                      const rounded = !ev.multi_day
+                        ? (large ? 4 : 3)
+                        : (ev.is_first_day && ev.is_last_day) ? (large ? 4 : 3)
+                          : ev.is_first_day ? `${large ? 4 : 3}px 0 0 ${large ? 4 : 3}px`
+                          : ev.is_last_day ? `0 ${large ? 4 : 3}px ${large ? 4 : 3}px 0`
+                          : 0
+                      return (
+                        <div key={ev.id} style={{
+                          fontSize: large ? 11 : compact ? 6 : 7,
+                          fontFamily: "Nunito, sans-serif", fontWeight: 700,
+                          color: isBar ? "#fff" : ev.color,
+                          background: isBar ? ev.color : `${ev.color}15`,
+                          borderRadius: rounded,
+                          padding: large ? "2px 5px" : "0px 2px",
+                          lineHeight: 1.3,
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                          marginBottom: large ? 2 : 1,
+                          display: "flex", alignItems: "center", gap: 3,
+                        }}>
+                          {ev.recurring && <Repeat size={large ? 9 : compact ? 5 : 6} style={{ flexShrink: 0 }} />}
+                          {/* På multi-day visa bara titeln på första dagen, tomt på fortsättnings-celler */}
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {ev.multi_day && !ev.is_first_day
+                              ? "→"
+                              : ev.all_day || ev.multi_day
+                                ? ev.title
+                                : large ? ev.title : `${ev.time} ${ev.title}`}
+                          </span>
+                        </div>
+                      )
+                    })}
                     {dayEvents.length > (large ? 2 : fill ? 2 : 1) && (
                       <div style={{ fontSize: large ? 10 : 6, color: txtMuted, textAlign: "center", fontWeight: 700, marginTop: 1 }}>
                         +{dayEvents.length - (large ? 2 : fill ? 2 : 1)} fler
@@ -568,16 +612,18 @@ function CalendarWidget({ events, persons, fill, compact, large, onDayClick, dar
 // Globalt event-modal som kan öppnas från Hem-vyn (eller var som helst).
 // Bottom-sheet style — täcker över hela viewporten.
 // Modal för att skapa ELLER redigera event. Skicka editEvent (objekt) för redigeringsläge.
-function AddEventModal({ open, prefillDate, editEvent, persons, onClose, onSave, onUpdate, onDelete }) {
+function AddEventModal({ open, prefillDate, editEvent, persons, userId, onClose, onSave, onUpdate, onDelete }) {
   const isEdit = !!editEvent
   const [title, setTitle] = useState("")
   const [date, setDate] = useState(fmtDate(new Date()))
+  const [endDate, setEndDate] = useState(fmtDate(new Date()))
   const [time, setTime] = useState("12:00")
   const [endTime, setEndTime] = useState("13:00")
+  const [allDay, setAllDay] = useState(false)
   const [personIdx, setPersonIdx] = useState(0)
   const [shared, setShared] = useState(true)
   const [notify, setNotify] = useState(true)
-  const [reminderMinutes, setReminderMinutes] = useState(60) // 60 = 1 timme innan
+  const [reminderMinutes, setReminderMinutes] = useState(60)
   const [recurrence, setRecurrence] = useState(null)
   const [recurUntil, setRecurUntil] = useState("")
 
@@ -585,13 +631,14 @@ function AddEventModal({ open, prefillDate, editEvent, persons, onClose, onSave,
   useEffect(() => {
     if (!open) return
     if (editEvent) {
-      // Redigeringsläge: ladda värden från eventet
       const start = new Date(editEvent.start_time)
       const end = new Date(editEvent.end_time)
       setTitle(editEvent.title || "")
       setDate(fmtDate(start))
+      setEndDate(fmtDate(end))
       setTime(`${String(start.getHours()).padStart(2, "0")}:${String(start.getMinutes()).padStart(2, "0")}`)
       setEndTime(`${String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")}`)
+      setAllDay(!!editEvent.all_day)
       const matchedPerson = persons.findIndex(p => p.user_id === editEvent.created_by)
       setPersonIdx(matchedPerson >= 0 ? matchedPerson : 0)
       setShared(editEvent.shared !== false)
@@ -600,19 +647,22 @@ function AddEventModal({ open, prefillDate, editEvent, persons, onClose, onSave,
       setRecurrence(editEvent.recurrence_rule?.freq || null)
       setRecurUntil(editEvent.recurrence_rule?.until || "")
     } else {
-      // Nytt event-läge
       setTitle("")
-      setDate(prefillDate ? fmtDate(prefillDate) : fmtDate(new Date()))
+      const startDate = prefillDate ? fmtDate(prefillDate) : fmtDate(new Date())
+      setDate(startDate)
+      setEndDate(startDate)
       setTime("12:00")
       setEndTime("13:00")
-      setPersonIdx(0)
+      setAllDay(false)
+      const myIdx = persons.findIndex(p => p.user_id === userId)
+      setPersonIdx(myIdx >= 0 ? myIdx : 0)
       setShared(true)
       setNotify(true)
       setReminderMinutes(60)
       setRecurrence(null)
       setRecurUntil("")
     }
-  }, [open, prefillDate, editEvent, persons])
+  }, [open, prefillDate, editEvent, persons, userId])
 
   if (!open) return null
 
@@ -621,14 +671,21 @@ function AddEventModal({ open, prefillDate, editEvent, persons, onClose, onSave,
     const recurrence_rule = recurrence
       ? (recurUntil ? { freq: recurrence, until: recurUntil } : { freq: recurrence })
       : null
+    // För all-day: använd start kl 00:00 och end kl 23:59:59 (på respektive datum)
+    const effectiveEndDate = endDate < date ? date : endDate // skydda mot end < start
+    const startTimestamp = allDay ? `${date}T00:00:00` : `${date}T${time}:00`
+    const endTimestamp = allDay
+      ? `${effectiveEndDate}T23:59:59`
+      : `${effectiveEndDate}T${endTime}:00`
     const payload = {
       title: title.trim(),
-      start_time: date + "T" + time + ":00",
-      end_time: date + "T" + endTime + ":00",
+      start_time: startTimestamp,
+      end_time: endTimestamp,
+      all_day: allDay,
       location: editEvent?.location || null,
       color: persons[personIdx]?.color || ACCENT.event,
       shared,
-      reminder_minutes: notify ? reminderMinutes : null,
+      reminder_minutes: notify && !allDay ? reminderMinutes : null,
       recurrence_rule,
     }
     if (isEdit) {
@@ -672,10 +729,32 @@ function AddEventModal({ open, prefillDate, editEvent, persons, onClose, onSave,
           </button>
         </div>
         <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Vad ska hända?" style={{ ...inputStyle, fontSize: 14 }} autoFocus />
-        <div style={{ display: "flex", gap: 8 }}>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ ...inputStyle, flex: 1, fontSize: 13 }} />
-          <input type="time" value={time} onChange={e => setTime(e.target.value)} style={{ ...inputStyle, width: 100, fontSize: 13 }} />
-          <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} style={{ ...inputStyle, width: 100, fontSize: 13 }} />
+
+        {/* Heldags-toggle */}
+        <div onClick={() => setAllDay(a => !a)} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "4px 0" }}>
+          <div style={{ width: 36, height: 20, borderRadius: 10, background: allDay ? ACCENT.calendar : t.textMuted, padding: 2, display: "flex", alignItems: "center" }}>
+            <div style={{ width: 16, height: 16, borderRadius: 8, background: "#fff", transition: "transform 0.2s", transform: allDay ? "translateX(16px)" : "translateX(0)" }} />
+          </div>
+          <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 600, color: allDay ? t.text : t.textSec }}>Heldag</span>
+        </div>
+
+        {/* Datum (start + slut) */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textMuted, fontWeight: 700, minWidth: 40 }}>FRÅN</span>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ ...inputStyle, flex: 1, fontSize: 13 }} />
+            {!allDay && <input type="time" value={time} onChange={e => setTime(e.target.value)} style={{ ...inputStyle, width: 100, fontSize: 13 }} />}
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textMuted, fontWeight: 700, minWidth: 40 }}>TILL</span>
+            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} min={date} style={{ ...inputStyle, flex: 1, fontSize: 13 }} />
+            {!allDay && <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} style={{ ...inputStyle, width: 100, fontSize: 13 }} />}
+          </div>
+          {date !== endDate && (
+            <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: ACCENT.event, fontWeight: 700, marginTop: 2 }}>
+              📅 Flerdagshändelse
+            </span>
+          )}
         </div>
         {persons.length > 0 && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -1731,17 +1810,38 @@ function GroceryAutocomplete({ onSubmit, placeholder = "Lägg till vara...", sma
   const [text, setText] = useState("")
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [highlightIdx, setHighlightIdx] = useState(0)
+  const [dropdownPos, setDropdownPos] = useState(null)
   const inputRef = useRef(null)
   const wrapRef = useRef(null)
+  const dropdownRef = useRef(null)
 
   const matches = useMemo(() => findGroceryMatches(text, 6), [text])
   const showDropdown = showSuggestions && matches.length > 0 && text.length >= 2
 
-  // Stäng dropdown vid klick utanför
+  // Beräkna dropdown-position relativ till input (fixed positioning, escapas från overflow:hidden parents)
+  useLayoutEffect(() => {
+    if (!showDropdown || !inputRef.current) return
+    function update() {
+      if (!inputRef.current) return
+      const r = inputRef.current.getBoundingClientRect()
+      setDropdownPos({ top: r.bottom + 4, left: r.left, width: r.width })
+    }
+    update()
+    window.addEventListener("scroll", update, true)
+    window.addEventListener("resize", update)
+    return () => {
+      window.removeEventListener("scroll", update, true)
+      window.removeEventListener("resize", update)
+    }
+  }, [showDropdown, text])
+
+  // Stäng dropdown vid klick utanför både input och dropdown
   useEffect(() => {
     if (!showDropdown) return
     function onDocClick(e) {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+      const insideWrap = wrapRef.current && wrapRef.current.contains(e.target)
+      const insideDropdown = dropdownRef.current && dropdownRef.current.contains(e.target)
+      if (!insideWrap && !insideDropdown) {
         setShowSuggestions(false)
       }
     }
@@ -1802,11 +1902,13 @@ function GroceryAutocomplete({ onSubmit, placeholder = "Lägg till vara...", sma
           width: "100%", boxSizing: "border-box",
         }}
       />
-      {showDropdown && (
-        <div style={{
-          position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 100,
+      {showDropdown && dropdownPos && typeof document !== "undefined" && createPortal(
+        <div ref={dropdownRef} style={{
+          position: "fixed",
+          top: dropdownPos.top, left: dropdownPos.left, width: dropdownPos.width,
+          zIndex: 9999,
           background: dropdownBg, border: `1px solid ${dropdownBorder}`,
-          borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.15)",
+          borderRadius: 10, boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
           backdropFilter: "blur(12px)",
           maxHeight: 240, overflowY: "auto",
         }}>
@@ -1816,7 +1918,7 @@ function GroceryAutocomplete({ onSubmit, placeholder = "Lägg till vara...", sma
               onMouseDown={(e) => { e.preventDefault(); submit(m.name) }}
               onMouseEnter={() => setHighlightIdx(i)}
               style={{
-                padding: "8px 12px",
+                padding: "10px 12px",
                 background: highlightIdx === i ? (dark ? "rgba(255,255,255,0.08)" : `${ACCENT.calendar}10`) : "transparent",
                 cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
@@ -1826,7 +1928,8 @@ function GroceryAutocomplete({ onSubmit, placeholder = "Lägg till vara...", sma
               <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 10, color: dark ? "rgba(255,255,255,0.45)" : t.textMuted }}>{m.category}</span>
             </div>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
@@ -1850,7 +1953,7 @@ function ShoppingList({ items, onAdd, onToggle, onDelete, onClearChecked }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <Card>
+      <Card style={{ overflow: "visible" }}>
         <div style={{ padding: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <ShoppingCart size={16} color={ACCENT.todo} />
@@ -2601,6 +2704,135 @@ function MealHistory({ householdId, currentWeekStart }) {
   )
 }
 
+// Veckonavigator + MealCard — samma logik men hämtar meals för vald vecka.
+// Tillåter användaren att bläddra framåt/bakåt och planera mat.
+function MealWeekNavigator({ householdId, currentWeekStart, dark }) {
+  const [weekOffset, setWeekOffset] = useState(0)
+  const [meals, setMeals] = useState([])
+
+  const weekStart = useMemo(() => {
+    const cur = new Date(currentWeekStart + "T00:00:00")
+    const d = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() + weekOffset * 7)
+    return fmtDate(d)
+  }, [currentWeekStart, weekOffset])
+
+  // Load meals för vald vecka + realtime-sub
+  useEffect(() => {
+    if (!householdId) return
+    let cancelled = false
+    supabase.from("meals").select("*").eq("household_id", householdId).eq("week_start_date", weekStart)
+      .then(({ data }) => { if (!cancelled) setMeals(data || []) })
+    const ch = supabase.channel("meals-nav:" + householdId + ":" + weekStart).on("postgres_changes", {
+      event: "*", schema: "public", table: "meals", filter: "household_id=eq." + householdId,
+    }, p => {
+      const row = p.new || p.old
+      if (!row || row.week_start_date !== weekStart) return
+      setMeals(prev => {
+        if (p.eventType === "INSERT") return prev.some(m => m.id === p.new.id) ? prev : [...prev, p.new]
+        if (p.eventType === "UPDATE") return prev.map(m => m.id === p.new.id ? p.new : m)
+        if (p.eventType === "DELETE") return prev.filter(m => m.id !== p.old.id)
+        return prev
+      })
+    }).subscribe()
+    return () => { cancelled = true; supabase.removeChannel(ch) }
+  }, [householdId, weekStart])
+
+  async function setMealText(weekday, text) {
+    if (!text) {
+      const ex = meals.find(m => m.weekday === weekday)
+      if (ex) {
+        setMeals(p => p.filter(m => m.id !== ex.id))
+        await supabase.from("meals").delete().eq("id", ex.id)
+      }
+      return
+    }
+    const ex = meals.find(m => m.weekday === weekday)
+    if (ex) {
+      setMeals(p => p.map(m => m.id === ex.id ? { ...m, meal_text: text } : m))
+      await supabase.from("meals").update({ meal_text: text }).eq("id", ex.id)
+    } else {
+      const tmp = { id: "tmp-" + Date.now(), household_id: householdId, week_start_date: weekStart, weekday, meal_text: text }
+      setMeals(p => [...p, tmp])
+      const { data, error } = await supabase.from("meals").insert({ household_id: householdId, week_start_date: weekStart, weekday, meal_text: text }).select().single()
+      if (error) setMeals(p => p.filter(m => m.id !== tmp.id))
+      else setMeals(p => p.map(m => m.id === tmp.id ? data : m))
+    }
+  }
+
+  async function setMealTag(weekday, tag) {
+    const ex = meals.find(m => m.weekday === weekday)
+    if (ex) {
+      setMeals(p => p.map(m => m.id === ex.id ? { ...m, tag } : m))
+      await supabase.from("meals").update({ tag }).eq("id", ex.id)
+    } else if (tag) {
+      const tmp = { id: "tmp-" + Date.now(), household_id: householdId, week_start_date: weekStart, weekday, meal_text: "", tag }
+      setMeals(p => [...p, tmp])
+      const { data, error } = await supabase.from("meals").insert({ household_id: householdId, week_start_date: weekStart, weekday, meal_text: "", tag }).select().single()
+      if (error) setMeals(p => p.filter(m => m.id !== tmp.id))
+      else setMeals(p => p.map(m => m.id === tmp.id ? data : m))
+    }
+  }
+
+  const mealsByWeekday = useMemo(() => {
+    const m = {}
+    meals.forEach(meal => { m[meal.weekday] = meal })
+    return m
+  }, [meals])
+  const tagsByWeekday = useMemo(() => {
+    const map = {}
+    meals.forEach(m => { if (m.tag) map[m.weekday] = m.tag })
+    return map
+  }, [meals])
+
+  const wsDate = new Date(weekStart + "T00:00:00")
+  const weDate = new Date(wsDate.getFullYear(), wsDate.getMonth(), wsDate.getDate() + 6)
+  const weekNum = isoWeekNumber(wsDate)
+  const sameMonth = wsDate.getMonth() === weDate.getMonth()
+  const rangeLabel = sameMonth
+    ? `${wsDate.getDate()}–${weDate.getDate()} ${MONTHS_SHORT[wsDate.getMonth()]}`
+    : `${wsDate.getDate()} ${MONTHS_SHORT[wsDate.getMonth()]} – ${weDate.getDate()} ${MONTHS_SHORT[weDate.getMonth()]}`
+
+  return (
+    <div>
+      {/* Vecko-navigator */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "10px 14px", marginBottom: 10,
+        background: t.inputBg, border: `1px solid ${t.inputBorder}`, borderRadius: 12,
+      }}>
+        <button onClick={() => setWeekOffset(o => o - 1)} style={{ background: "none", border: "none", cursor: "pointer", padding: 6, color: t.textSec, display: "flex" }}>
+          <ChevronLeft size={18} />
+        </button>
+        <div style={{ textAlign: "center", flex: 1 }}>
+          <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 15, fontWeight: 700, color: t.text }}>
+            v.{weekNum} · {rangeLabel}
+          </div>
+          {weekOffset === 0 && (
+            <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: ACCENT.meal, fontWeight: 700, marginTop: 2 }}>Denna vecka</div>
+          )}
+          {weekOffset !== 0 && (
+            <button onClick={() => setWeekOffset(0)} style={{
+              background: "none", border: "none", cursor: "pointer", padding: 0, marginTop: 2,
+              fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textMuted, textDecoration: "underline",
+            }}>Tillbaka till denna vecka</button>
+          )}
+        </div>
+        <button onClick={() => setWeekOffset(o => o + 1)} style={{ background: "none", border: "none", cursor: "pointer", padding: 6, color: t.textSec, display: "flex" }}>
+          <ChevronRight size={18} />
+        </button>
+      </div>
+
+      <MealCard
+        mealsByWeekday={mealsByWeekday}
+        mealTagsLocal={tagsByWeekday}
+        onSetMealText={setMealText}
+        onSetMealTag={setMealTag}
+        dark={dark}
+      />
+    </div>
+  )
+}
+
 function MealTab({ isMobile, mealsByWeekday, mealTagsLocal, onSetMealText, onSetMealTag, foodPrefs, setFoodPrefs, onAiGenerate, householdId, currentWeekStart }) {
   const [showAI, setShowAI] = useState(false)
   const [generating, setGenerating] = useState(false)
@@ -2685,12 +2917,7 @@ function MealTab({ isMobile, mealsByWeekday, mealTagsLocal, onSetMealText, onSet
         </Card>
       )}
 
-      <MealCard
-        mealsByWeekday={mealsByWeekday}
-        mealTagsLocal={mealTagsLocal}
-        onSetMealText={onSetMealText}
-        onSetMealTag={onSetMealTag}
-      />
+      <MealWeekNavigator householdId={householdId} currentWeekStart={currentWeekStart} />
 
       <div style={{ marginTop: 12 }}>
         <MealHistory householdId={householdId} currentWeekStart={currentWeekStart} />
@@ -2713,10 +2940,22 @@ function SectionHeader({ title, onBack }) {
   )
 }
 
-function ProfileSection({ onBack, session, themeColor, setThemeColor }) {
+function ProfileSection({ onBack, session, themeColor, setThemeColor, displayName, onSaveDisplayName }) {
   const email = session?.user?.email || ""
-  const initial = (email[0] || "?").toUpperCase()
-  const [name, setName] = useState(session?.user?.user_metadata?.name || email.split("@")[0] || "")
+  const initial = (displayName?.[0] || email[0] || "?").toUpperCase()
+  const [name, setName] = useState(displayName || "")
+  const [savedAt, setSavedAt] = useState(null)
+  useEffect(() => { setName(displayName || "") }, [displayName])
+  // Debouncad save vid redigering
+  useEffect(() => {
+    if (name === (displayName || "")) return
+    const ti = setTimeout(() => {
+      onSaveDisplayName(name)
+      setSavedAt(Date.now())
+      setTimeout(() => setSavedAt(null), 1500)
+    }, 600)
+    return () => clearTimeout(ti)
+  }, [name, displayName, onSaveDisplayName])
   return (
     <div>
       <SectionHeader title="Profil" onBack={onBack} />
@@ -2728,8 +2967,14 @@ function ProfileSection({ onBack, session, themeColor, setThemeColor }) {
           <Btn small outline><Edit3 size={12} /> Byt profilbild (TODO: storage)</Btn>
           <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 10 }}>
             <div>
-              <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, fontWeight: 700, color: t.textSec }}>Namn</span>
-              <input value={name} onChange={e => setName(e.target.value)} style={{ ...inputStyle, fontSize: 14, width: "100%", marginTop: 4 }} />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, fontWeight: 700, color: t.textSec }}>Visningsnamn</span>
+                {savedAt && <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: ACCENT.todo, fontWeight: 700 }}>✓ Sparat</span>}
+              </div>
+              <input value={name} onChange={e => setName(e.target.value)} placeholder="T.ex. Ludvig" style={{ ...inputStyle, fontSize: 14, width: "100%", marginTop: 4 }} />
+              <p style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textMuted, margin: "4px 0 0" }}>
+                Visas i kalender, listor och chatten istället för din e-post.
+              </p>
             </div>
             <div>
               <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, fontWeight: 700, color: t.textSec }}>E-post</span>
@@ -3281,7 +3526,7 @@ function AccountSection({ onBack }) {
   )
 }
 
-function SettingsTab({ isMobile, session, household, members, foodPrefs, setFoodPrefs, onCreateInvite, tvData, tvSlots, onSaveTvSlots, tvPhotoUrl, onSaveTvPhoto, onUploadTvPhoto, userId, themeColor, setThemeColor }) {
+function SettingsTab({ isMobile, session, household, members, foodPrefs, setFoodPrefs, onCreateInvite, tvData, tvSlots, onSaveTvSlots, tvPhotoUrl, onSaveTvPhoto, onUploadTvPhoto, userId, themeColor, setThemeColor, displayName, onSaveDisplayName }) {
   const [activeSection, setActiveSection] = useState(null)
   const sections = [
     { id: "profile", icon: User, label: "Profil", desc: "Namn, profilbild" },
@@ -3291,7 +3536,7 @@ function SettingsTab({ isMobile, session, household, members, foodPrefs, setFood
     { id: "account", icon: LogOut, label: "Konto", desc: "Logga ut" },
   ]
   if (activeSection === "tv") return <TvEditorSection onBack={() => setActiveSection(null)} isMobile={isMobile} tvData={tvData} tvSlots={tvSlots} onSaveTvSlots={onSaveTvSlots} tvPhotoUrl={tvPhotoUrl} onSaveTvPhoto={onSaveTvPhoto} onUploadTvPhoto={onUploadTvPhoto} />
-  if (activeSection === "profile") return <ProfileSection onBack={() => setActiveSection(null)} session={session} themeColor={themeColor} setThemeColor={setThemeColor} />
+  if (activeSection === "profile") return <ProfileSection onBack={() => setActiveSection(null)} session={session} themeColor={themeColor} setThemeColor={setThemeColor} displayName={displayName} onSaveDisplayName={onSaveDisplayName} />
   if (activeSection === "household") return <HouseholdSection onBack={() => setActiveSection(null)} household={household} members={members} userId={userId} onCreateInvite={onCreateInvite} />
   if (activeSection === "food") return <FoodPrefsSection onBack={() => setActiveSection(null)} foodPrefs={foodPrefs} setFoodPrefs={setFoodPrefs} />
   if (activeSection === "account") return <AccountSection onBack={() => setActiveSection(null)} />
@@ -3330,32 +3575,57 @@ function AiChat({ position = "fixed", callAi, executeTool }) {
   const [loading, setLoading] = useState(false)
   const [listening, setListening] = useState(false)
   const messagesEndRef = useRef(null)
+  // AI-historik i OpenAI-format (kumulerar mellan turer för löpande dialog).
+  // Använder ref för att undvika stale-closure i async-handlern.
+  const aiHistoryRef = useRef([])
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }) }, [messages])
 
   async function handleSend() {
     const text = input.trim()
     if (!text || loading) return
+
+    // Säkerhetstimer: tvinga reset om något hänger > 60 sek
+    let safetyTimer = null
+
     setMessages(p => [...p, { role: "user", text }])
     setInput("")
     setLoading(true)
+    safetyTimer = setTimeout(() => {
+      setLoading(false)
+      setMessages(p => [...p, { role: "ai", text: "Tog för lång tid — försök igen." }])
+    }, 60000)
+
+    // Bygg upp historik LOKALT (inte bara via ref) så vi kan skicka senaste version
+    let localHistory = [...aiHistoryRef.current, { role: "user", content: text }]
+
     try {
-      // Steg 1: skicka till AI
-      const data = await callAi(text, null)
+      // Steg 1: skicka till AI med full historik
+      const data = await callAi("", localHistory)
       const { reply, tool_calls, assistant_message } = data || {}
 
-      // Visa AI:s eventuella text-svar
+      if (assistant_message) {
+        localHistory.push(assistant_message)
+      }
+
       if (reply) {
         setMessages(p => [...p, { role: "ai", text: reply }])
       }
 
       // Exekvera tool calls om några finns
       if (tool_calls && tool_calls.length > 0) {
-        const toolResults = []
         for (const tc of tool_calls) {
-          const result = await executeTool(tc.name, tc.arguments)
-          toolResults.push({ tool_call_id: tc.id, ...result })
-          // Lägg till resultatet som en chat-rad
+          let result
+          try {
+            result = await executeTool(tc.name, tc.arguments)
+          } catch (e) {
+            result = { ok: false, message: "Tool-fel: " + (e?.message || String(e)) }
+          }
+          localHistory.push({
+            role: "tool",
+            tool_call_id: tc.id,
+            content: result.ok ? result.message : ("Misslyckades: " + result.message),
+          })
           setMessages(p => [...p, {
             role: "tool",
             text: (result.ok ? "✓ " : "✗ ") + result.message,
@@ -3363,28 +3633,29 @@ function AiChat({ position = "fixed", callAi, executeTool }) {
           }])
         }
 
-        // Steg 2: Skicka tillbaka resultaten så AI:n kan ge en naturlig sammanfattning
-        const previous = [
-          { role: "user", content: text },
-          assistant_message,
-          ...toolResults.map(r => ({
-            role: "tool",
-            tool_call_id: r.tool_call_id,
-            content: r.ok ? r.message : ("Misslyckades: " + r.message),
-          })),
-        ]
+        // Steg 2: skicka tillbaka tool-resultaten så AI:n kan ge naturlig sammanfattning
         try {
-          const followup = await callAi("", previous)
+          const followup = await callAi("", localHistory)
+          if (followup?.assistant_message) {
+            localHistory.push(followup.assistant_message)
+          }
           if (followup?.reply) {
             setMessages(p => [...p, { role: "ai", text: followup.reply }])
           }
-        } catch {} // tyst-fail på follow-up
+        } catch (e) {
+          console.warn("[ai followup failed]", e)
+        }
       } else if (!reply) {
         setMessages(p => [...p, { role: "ai", text: "(tomt svar)" }])
       }
+
+      // Spara uppdaterad historik. Trimma till senaste 30 meddelandena för att inte växa oändligt.
+      aiHistoryRef.current = localHistory.slice(-30)
     } catch (e) {
-      setMessages(p => [...p, { role: "ai", text: "Något gick fel: " + (e.message || "okänt fel") }])
+      console.error("[ai chat error]", e)
+      setMessages(p => [...p, { role: "ai", text: "Något gick fel: " + (e?.message || "okänt fel") }])
     } finally {
+      if (safetyTimer) clearTimeout(safetyTimer)
       setLoading(false)
     }
   }
@@ -3518,6 +3789,7 @@ function TabContent({
   session, household, members, onCreateInvite, tvData, tvSlots, onSaveTvSlots,
   tvPhotoUrl, onSaveTvPhoto, onUploadTvPhoto,
   themeColor, setThemeColor,
+  displayName, onSaveDisplayName,
   // activity + countdowns + meal history
   activity, countdowns, onAddCountdown, onDeleteCountdown, onTogglePinCountdown,
   householdIdProp, currentWeekStart,
@@ -3639,7 +3911,8 @@ function TabContent({
         tvData={tvData} tvSlots={tvSlots} onSaveTvSlots={onSaveTvSlots}
         tvPhotoUrl={tvPhotoUrl} onSaveTvPhoto={onSaveTvPhoto} onUploadTvPhoto={onUploadTvPhoto}
         userId={userId}
-        themeColor={themeColor} setThemeColor={setThemeColor} />
+        themeColor={themeColor} setThemeColor={setThemeColor}
+        displayName={displayName} onSaveDisplayName={onSaveDisplayName} />
     </div>
   )
   return null
@@ -4315,7 +4588,7 @@ export default function SmartHub({ session, household }) {
   useEffect(() => {
     if (!householdId) return
     let cancelled = false
-    supabase.from("household_members").select("user_id,role,joined_at").eq("household_id", householdId)
+    supabase.from("household_members").select("user_id,role,joined_at,display_name").eq("household_id", householdId)
       .then(({ data }) => { if (!cancelled && data) setMembers(data) })
     return () => { cancelled = true }
   }, [householdId])
@@ -4436,9 +4709,11 @@ export default function SmartHub({ session, household }) {
   // ── Derived data ──
   const persons = useMemo(() => members.map((m, i) => ({
     user_id: m.user_id,
-    name: m.user_id === userId ? "Du" : "Medlem " + (i + 1),
+    // Använd display_name om satt, annars "Du" för egen användare, annars fallback
+    name: m.display_name || (m.user_id === userId ? "Du" : "Medlem " + (i + 1)),
     color: PERSON_PALETTE[i % PERSON_PALETTE.length],
     role: m.role,
+    display_name: m.display_name,
   })), [members, userId])
 
   const allListsWithItems = useMemo(() => lists.map(l => ({
@@ -4581,6 +4856,7 @@ export default function SmartHub({ session, household }) {
     const { data, error } = await supabase.from("calendar_events").insert({
       household_id: householdId, title: ev.title,
       start_time: ev.start_time, end_time: ev.end_time,
+      all_day: ev.all_day || false,
       location: ev.location, color: ev.color, shared: ev.shared,
       recurrence_rule: ev.recurrence_rule || null,
       reminder_minutes: ev.reminder_minutes ?? null,
@@ -4592,12 +4868,12 @@ export default function SmartHub({ session, household }) {
     }
   }
   async function handleUpdateEvent(id, updates) {
-    // Optimistic UI: uppdatera local state direkt
     setCalEvents(p => p.map(e => e.id === id ? { ...e, ...updates } : e))
     const { error } = await supabase.from("calendar_events").update({
       title: updates.title,
       start_time: updates.start_time,
       end_time: updates.end_time,
+      all_day: updates.all_day || false,
       location: updates.location,
       color: updates.color,
       shared: updates.shared,
@@ -4778,6 +5054,15 @@ export default function SmartHub({ session, household }) {
     const { error } = await supabase.from("invites").insert({ household_id: householdId, code, created_by: userId })
     return error ? null : code
   }
+  // Spara visningsnamn för aktuell användare
+  async function handleSaveDisplayName(name) {
+    const trimmed = (name || "").trim()
+    if (!householdId || !userId) return
+    setMembers(p => p.map(m => m.user_id === userId ? { ...m, display_name: trimmed || null } : m))
+    await supabase.from("household_members")
+      .update({ display_name: trimmed || null })
+      .eq("household_id", householdId).eq("user_id", userId)
+  }
 
   // ── AI handlers ──
   async function handleAiGenerateMeals(prefs) {
@@ -4938,6 +5223,7 @@ export default function SmartHub({ session, household }) {
         prefillDate={eventModal.date}
         editEvent={eventModal.editEvent}
         persons={persons}
+        userId={userId}
         onClose={closeAddEvent}
         onSave={handleAddEvent}
         onUpdate={handleUpdateEvent}
@@ -5007,6 +5293,8 @@ export default function SmartHub({ session, household }) {
     tvSlots, onSaveTvSlots: handleSaveTvSlots,
     tvPhotoUrl, onSaveTvPhoto: handleSaveTvPhoto, onUploadTvPhoto: handleUploadTvPhoto,
     themeColor, setThemeColor,
+    displayName: members.find(m => m.user_id === userId)?.display_name || "",
+    onSaveDisplayName: handleSaveDisplayName,
     activity,
     countdowns, onAddCountdown: handleAddCountdown, onDeleteCountdown: handleDeleteCountdown, onTogglePinCountdown: handleTogglePinCountdown,
     householdIdProp: householdId, currentWeekStart,
