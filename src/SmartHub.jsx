@@ -51,6 +51,49 @@ const t = {
   line: "rgba(0,0,0,0.04)", inputBg: "rgba(0,0,0,0.03)", inputBorder: "rgba(0,0,0,0.08)",
 }
 const ACCENT = { calendar: "#7c3aed", todo: "#059669", meal: "#d97706", event: "#2563eb", weather: "#0ea5e9" }
+
+// ── Hem-vy widget-konfiguration (mobile only, persisted via localStorage) ──
+const HOME_WIDGET_META = {
+  calendar:  { label: "Veckokalender", icon: "📅", fullWidthInGrid: true },
+  todo:      { label: "Fäst lista",    icon: "📝", fullWidthInGrid: false },
+  meal:      { label: "Veckomeny",     icon: "🍽️", fullWidthInGrid: false },
+  countdown: { label: "Nedräkning",    icon: "⏳", fullWidthInGrid: true },
+  activity:  { label: "Aktivitet",     icon: "📣", fullWidthInGrid: true },
+}
+const DEFAULT_HOME_CONFIG = {
+  widgets: [
+    { id: "calendar",  enabled: true },
+    { id: "todo",      enabled: true },
+    { id: "meal",      enabled: true },
+    { id: "countdown", enabled: true },
+    { id: "activity",  enabled: true },
+  ],
+  gridMode: false,
+  showWeather: true,
+}
+function loadHomeConfig() {
+  if (typeof window === "undefined") return DEFAULT_HOME_CONFIG
+  try {
+    const raw = localStorage.getItem("smarthub:homeConfig")
+    if (!raw) return DEFAULT_HOME_CONFIG
+    const saved = JSON.parse(raw)
+    // Migrate: lägg till nya widgets som inte fanns när config sparades
+    const savedIds = new Set((saved.widgets || []).map(w => w.id))
+    const merged = [...(saved.widgets || [])]
+    for (const w of DEFAULT_HOME_CONFIG.widgets) {
+      if (!savedIds.has(w.id)) merged.push(w)
+    }
+    // Filtrera bort widgets som inte längre finns i meta
+    const valid = merged.filter(w => HOME_WIDGET_META[w.id])
+    return {
+      widgets: valid.length ? valid : DEFAULT_HOME_CONFIG.widgets,
+      gridMode: !!saved.gridMode,
+      showWeather: saved.showWeather !== false,
+    }
+  } catch {
+    return DEFAULT_HOME_CONFIG
+  }
+}
 const THEME_PRESETS = [
   { id: "lila",   label: "Lila",  color: "#7c3aed" },
   { id: "bla",    label: "Blå",   color: "#2563eb" },
@@ -3945,6 +3988,339 @@ function AiChat({ position = "fixed", callAi, executeTool }) {
 }
 
 // ════════════════════════════════════════════════
+//  HOME EDIT BAR + DRAGGABLE WIDGET (mobile only)
+// ════════════════════════════════════════════════
+function HomeEditBar({ homeConfig, setHomeConfig, onDone, themeColor }) {
+  function setGridMode(v) { setHomeConfig(c => ({ ...c, gridMode: v })) }
+  function setShowWeather(v) { setHomeConfig(c => ({ ...c, showWeather: v })) }
+  function resetDefaults() {
+    if (confirm("Återställ Hem-vyn till standardlayouten?")) {
+      setHomeConfig(DEFAULT_HOME_CONFIG)
+    }
+  }
+  return (
+    <div style={{
+      background: `${themeColor}10`, border: `1px solid ${themeColor}40`, borderRadius: 14,
+      padding: "12px 14px", marginBottom: 12,
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <div style={{ fontFamily: "Comfortaa, sans-serif", fontWeight: 700, fontSize: 15, color: t.text }}>
+          ✏️ Anpassa Hem
+        </div>
+        <button onClick={onDone} style={{
+          background: themeColor, color: "#fff", border: "none", borderRadius: 8,
+          padding: "6px 14px", fontFamily: "Nunito, sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer",
+        }}>Klar</button>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {/* Layout-toggle */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <span style={{ fontSize: 13, color: t.textSec, fontWeight: 600 }}>Layout</span>
+          <div style={{ display: "flex", gap: 4, background: t.inputBg, borderRadius: 8, padding: 3 }}>
+            <button onClick={() => setGridMode(false)} style={{
+              padding: "5px 12px", border: "none", borderRadius: 6,
+              background: !homeConfig.gridMode ? t.card : "transparent",
+              color: !homeConfig.gridMode ? themeColor : t.textSec,
+              fontWeight: !homeConfig.gridMode ? 700 : 500, fontSize: 12, cursor: "pointer",
+              boxShadow: !homeConfig.gridMode ? "0 1px 3px rgba(0,0,0,0.06)" : "none",
+            }}>📜 Lista</button>
+            <button onClick={() => setGridMode(true)} style={{
+              padding: "5px 12px", border: "none", borderRadius: 6,
+              background: homeConfig.gridMode ? t.card : "transparent",
+              color: homeConfig.gridMode ? themeColor : t.textSec,
+              fontWeight: homeConfig.gridMode ? 700 : 500, fontSize: 12, cursor: "pointer",
+              boxShadow: homeConfig.gridMode ? "0 1px 3px rgba(0,0,0,0.06)" : "none",
+            }}>▦ Rutnät</button>
+          </div>
+        </div>
+
+        {/* Väder-toggle */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <span style={{ fontSize: 13, color: t.textSec, fontWeight: 600 }}>Visa väder i toppen</span>
+          <button onClick={() => setShowWeather(!homeConfig.showWeather)} style={{
+            width: 44, height: 24, border: "none", borderRadius: 12, cursor: "pointer",
+            background: homeConfig.showWeather ? themeColor : t.inputBorder,
+            position: "relative", transition: "background 0.15s",
+          }}>
+            <div style={{
+              position: "absolute", top: 2, left: homeConfig.showWeather ? 22 : 2,
+              width: 20, height: 20, borderRadius: 10, background: "#fff",
+              transition: "left 0.15s",
+            }} />
+          </button>
+        </div>
+
+        <div style={{ fontSize: 11, color: t.textMuted, lineHeight: 1.4, marginTop: 4 }}>
+          Dra widgets för att ändra ordning. Tryck på ögat för att dölja.
+        </div>
+
+        <button onClick={resetDefaults} style={{
+          background: "transparent", border: `1px solid ${t.inputBorder}`,
+          borderRadius: 8, padding: "6px 10px", fontSize: 12, color: t.textSec,
+          fontFamily: "Nunito, sans-serif", cursor: "pointer", marginTop: 2,
+        }}>↻ Återställ standard</button>
+      </div>
+    </div>
+  )
+}
+
+// Widget-wrapper med drag-handle + visibility-toggle (visas bara i edit-mode)
+function DraggableWidget({
+  widgetId, idx, editMode, enabled, themeColor,
+  isDragging, isDragTarget, onPointerDown, onToggleEnabled,
+  fullWidthInGrid, gridMode, children,
+}) {
+  const meta = HOME_WIDGET_META[widgetId]
+  if (!editMode && !enabled) return null
+  const spans2 = gridMode && (fullWidthInGrid || !enabled)
+  const opacity = isDragging ? 0.4 : (enabled ? 1 : 0.45)
+  return (
+    <div
+      data-widget-idx={idx}
+      data-widget-id={widgetId}
+      style={{
+        position: "relative",
+        gridColumn: spans2 ? "1 / -1" : "auto",
+        opacity, transition: isDragging ? "none" : "opacity 0.15s",
+      }}
+    >
+      {/* Top: drop-indicator */}
+      {isDragTarget && (
+        <div style={{
+          position: "absolute", top: -6, left: 0, right: 0, height: 3,
+          background: themeColor, borderRadius: 2, pointerEvents: "none",
+          boxShadow: `0 0 8px ${themeColor}80`,
+        }} />
+      )}
+
+      {editMode && (
+        <div style={{
+          position: "absolute", top: -2, left: 0, right: 0, height: 28,
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+          padding: "0 6px", zIndex: 5, pointerEvents: "none",
+        }}>
+          {/* Drag-handle (vänster) */}
+          <div
+            onPointerDown={(e) => { e.preventDefault(); onPointerDown(e) }}
+            style={{
+              pointerEvents: "auto", touchAction: "none",
+              width: 32, height: 32, borderRadius: 8, background: themeColor,
+              color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "grab", boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+              fontSize: 16,
+            }}
+            aria-label={`Dra ${meta?.label || widgetId}`}
+          >⋮⋮</div>
+          {/* Visibility toggle (höger) */}
+          <button
+            onClick={() => onToggleEnabled(widgetId)}
+            style={{
+              pointerEvents: "auto",
+              width: 32, height: 32, borderRadius: 8, border: "none",
+              background: enabled ? t.card : t.textMuted,
+              color: enabled ? t.text : "#fff",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer", boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
+              fontSize: 14,
+            }}
+            aria-label={enabled ? `Dölj ${meta?.label}` : `Visa ${meta?.label}`}
+          >{enabled ? "👁" : "🚫"}</button>
+        </div>
+      )}
+
+      {/* Widget-innehåll. Disabled = grå placeholder, enabled = riktigt innehåll */}
+      {enabled ? (
+        <div style={{
+          outline: editMode ? `2px dashed ${themeColor}60` : "none",
+          outlineOffset: 2, borderRadius: 18,
+          paddingTop: editMode ? 32 : 0,
+          transition: "padding-top 0.15s",
+        }}>
+          {children}
+        </div>
+      ) : (
+        <div style={{
+          background: t.inputBg, border: `1px dashed ${t.inputBorder}`,
+          borderRadius: 14, padding: "20px 16px", marginTop: editMode ? 32 : 0,
+          display: "flex", alignItems: "center", gap: 10,
+          color: t.textMuted, fontSize: 13, fontStyle: "italic",
+        }}>
+          <span style={{ fontSize: 18 }}>{meta?.icon}</span>
+          <span><strong>{meta?.label}</strong> är dold</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Mobil Hem-vy med customization + drag-and-drop reorder
+function MobileHome({
+  weather, calEvents, persons,
+  pinnedList, onToggleItem,
+  mealsByWeekday, mealTagsLocal, onSetMealText, onSetMealTag,
+  countdowns, setTab,
+  activity, members, userId,
+  onOpenDayModal,
+  homeConfig, setHomeConfig, editMode, setEditMode,
+}) {
+  const themeColor = getThemeColor()
+  // ── Drag-state ──
+  const [drag, setDrag] = useState(null) // { fromIdx, pointerId, startY, currentY, targetIdx }
+  const containerRef = useRef(null)
+
+  // Pointer down på drag-handle
+  function handlePointerDown(fromIdx) {
+    return (e) => {
+      // Bara primary pointer (vänster mus / första finger)
+      if (e.pointerType === "mouse" && e.button !== 0) return
+      try { e.currentTarget.setPointerCapture(e.pointerId) } catch {}
+      setDrag({
+        fromIdx, pointerId: e.pointerId,
+        startY: e.clientY, currentY: e.clientY,
+        targetIdx: fromIdx,
+      })
+    }
+  }
+
+  // Beräkna vilken widget pekaren är över
+  function computeTargetIdx(clientY) {
+    if (!containerRef.current) return drag?.fromIdx ?? 0
+    const widgets = containerRef.current.querySelectorAll("[data-widget-idx]")
+    let best = drag?.fromIdx ?? 0
+    for (const el of widgets) {
+      const rect = el.getBoundingClientRect()
+      const mid = rect.top + rect.height / 2
+      if (clientY < mid) {
+        best = parseInt(el.dataset.widgetIdx, 10)
+        return best
+      }
+      best = parseInt(el.dataset.widgetIdx, 10)
+    }
+    return best
+  }
+
+  // Pointer move/up — lyssna globalt så drag fortsätter även om fingret lämnar handle
+  useEffect(() => {
+    if (!drag) return
+    function onMove(e) {
+      if (e.pointerId !== drag.pointerId) return
+      const newTarget = computeTargetIdx(e.clientY)
+      setDrag(d => d ? { ...d, currentY: e.clientY, targetIdx: newTarget } : d)
+    }
+    function onUp(e) {
+      if (e.pointerId !== drag.pointerId) return
+      const { fromIdx, targetIdx } = drag
+      if (fromIdx !== targetIdx) {
+        setHomeConfig(c => {
+          const arr = [...c.widgets]
+          const [moved] = arr.splice(fromIdx, 1)
+          arr.splice(targetIdx, 0, moved)
+          return { ...c, widgets: arr }
+        })
+      }
+      setDrag(null)
+    }
+    window.addEventListener("pointermove", onMove, { passive: false })
+    window.addEventListener("pointerup", onUp)
+    window.addEventListener("pointercancel", onUp)
+    return () => {
+      window.removeEventListener("pointermove", onMove)
+      window.removeEventListener("pointerup", onUp)
+      window.removeEventListener("pointercancel", onUp)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drag?.pointerId])
+
+  function toggleWidgetEnabled(widgetId) {
+    setHomeConfig(c => ({
+      ...c,
+      widgets: c.widgets.map(w => w.id === widgetId ? { ...w, enabled: !w.enabled } : w),
+    }))
+  }
+
+  // Render varje widget-typ
+  function renderWidget(id) {
+    if (id === "calendar") return <HomeCalendar events={calEvents} persons={persons} onDayClick={d => onOpenDayModal(d)} isMobile={true} />
+    if (id === "todo")     return <TodoCard pinnedList={pinnedList} onToggle={onToggleItem} />
+    if (id === "meal")     return <MealCard mealsByWeekday={mealsByWeekday} mealTagsLocal={mealTagsLocal} onSetMealText={onSetMealText} onSetMealTag={onSetMealTag} />
+    if (id === "countdown") return <BigCountdownWidget pinnedCountdown={countdowns.find(c => c.pinned && daysUntilDate(c.target_date) >= 0)} onOpenTab={() => setTab("nedrakning")} />
+    if (id === "activity") return <ActivityFeed activity={activity} persons={persons} members={members} userId={userId} max={5} />
+    return null
+  }
+
+  const showWeather = homeConfig.showWeather !== false
+  const useGrid = !!homeConfig.gridMode
+
+  return (
+    <div style={{ padding: "20px 16px 16px" }}>
+      {/* Header: klocka + väder + bell + ✏️ */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+        <ClockDisplay size="small" />
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          {showWeather && <WeatherMini weather={weather} />}
+          <NotificationBell activity={activity} persons={persons} members={members} userId={userId} />
+          <button
+            onClick={() => setEditMode(v => !v)}
+            aria-label={editMode ? "Avsluta redigering" : "Anpassa Hem-vy"}
+            style={{
+              background: editMode ? themeColor : "transparent",
+              color: editMode ? "#fff" : t.textSec,
+              border: `1px solid ${editMode ? themeColor : t.inputBorder}`,
+              borderRadius: 8, padding: "6px 8px", cursor: "pointer",
+              fontSize: 13, marginLeft: 4, display: "flex", alignItems: "center",
+            }}
+          >{editMode ? "✓" : "✏️"}</button>
+        </div>
+      </div>
+
+      {editMode && (
+        <HomeEditBar
+          homeConfig={homeConfig}
+          setHomeConfig={setHomeConfig}
+          onDone={() => setEditMode(false)}
+          themeColor={themeColor}
+        />
+      )}
+
+      <div
+        ref={containerRef}
+        style={{
+          display: useGrid ? "grid" : "flex",
+          flexDirection: useGrid ? undefined : "column",
+          gridTemplateColumns: useGrid ? "1fr 1fr" : undefined,
+          gap: 12,
+          touchAction: drag ? "none" : "auto",
+        }}
+      >
+        {homeConfig.widgets.map((w, idx) => {
+          const meta = HOME_WIDGET_META[w.id]
+          if (!meta) return null
+          return (
+            <DraggableWidget
+              key={w.id}
+              widgetId={w.id}
+              idx={idx}
+              editMode={editMode}
+              enabled={w.enabled}
+              themeColor={themeColor}
+              isDragging={drag?.fromIdx === idx}
+              isDragTarget={drag && drag.targetIdx === idx && drag.fromIdx !== idx}
+              onPointerDown={handlePointerDown(idx)}
+              onToggleEnabled={toggleWidgetEnabled}
+              fullWidthInGrid={meta.fullWidthInGrid}
+              gridMode={useGrid}
+            >
+              {renderWidget(w.id)}
+            </DraggableWidget>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ════════════════════════════════════════════════
 //  TAB CONTENT (shared between Mobile & Desktop)
 // ════════════════════════════════════════════════
 function TabContent({
@@ -3970,21 +4346,15 @@ function TabContent({
   // shopping
   shoppingItems, onAddShoppingItem, onToggleShoppingItem, onDeleteShoppingItem, onClearCheckedShopping,
   listsTopTab, setListsTopTab,
+  // home customization
+  homeConfig, setHomeConfig, homeEditMode, setHomeEditMode,
 }) {
   const pad = isMobile ? "16px 16px 16px" : "24px 28px"
   if (tab === "hem") {
-    return (
-      <div style={{ padding: isMobile ? "20px 16px 16px" : "24px 28px" }}>
-        {isMobile && (
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
-            <ClockDisplay size="small" />
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <WeatherMini weather={weather} />
-              <NotificationBell activity={activity} persons={persons} members={members} userId={userId} />
-            </div>
-          </div>
-        )}
-        {!isMobile && (
+    // Desktop: oförändrad ursprungslayout (ingen customization än)
+    if (!isMobile) {
+      return (
+        <div style={{ padding: "24px 28px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
             <h2 style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 24, fontWeight: 700, color: t.text, margin: 0 }}>Hem</h2>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -3992,22 +4362,32 @@ function TabContent({
               <NotificationBell activity={activity} persons={persons} members={members} userId={userId} />
             </div>
           </div>
-        )}
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <HomeCalendar
-            events={calEvents}
-            persons={persons}
-            onDayClick={d => onOpenDayModal(d)}
-            isMobile={isMobile}
-          />
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
-            <TodoCard pinnedList={pinnedList} onToggle={onToggleItem} />
-            <MealCard mealsByWeekday={mealsByWeekday} mealTagsLocal={mealTagsLocal} onSetMealText={onSetMealText} onSetMealTag={onSetMealTag} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <HomeCalendar events={calEvents} persons={persons} onDayClick={d => onOpenDayModal(d)} isMobile={isMobile} />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <TodoCard pinnedList={pinnedList} onToggle={onToggleItem} />
+              <MealCard mealsByWeekday={mealsByWeekday} mealTagsLocal={mealTagsLocal} onSetMealText={onSetMealText} onSetMealTag={onSetMealTag} />
+            </div>
+            <BigCountdownWidget pinnedCountdown={countdowns.find(c => c.pinned && daysUntilDate(c.target_date) >= 0)} onOpenTab={() => setTab("nedrakning")} />
+            <ActivityFeed activity={activity} persons={persons} members={members} userId={userId} max={5} />
           </div>
-          <BigCountdownWidget pinnedCountdown={countdowns.find(c => c.pinned && daysUntilDate(c.target_date) >= 0)} onOpenTab={() => setTab("nedrakning")} />
-          <ActivityFeed activity={activity} persons={persons} members={members} userId={userId} max={5} />
         </div>
-      </div>
+      )
+    }
+    // Mobile: customizable
+    return (
+      <MobileHome
+        weather={weather}
+        calEvents={calEvents} persons={persons}
+        pinnedList={pinnedList} onToggleItem={onToggleItem}
+        mealsByWeekday={mealsByWeekday} mealTagsLocal={mealTagsLocal}
+        onSetMealText={onSetMealText} onSetMealTag={onSetMealTag}
+        countdowns={countdowns} setTab={setTab}
+        activity={activity} members={members} userId={userId}
+        onOpenDayModal={onOpenDayModal}
+        homeConfig={homeConfig} setHomeConfig={setHomeConfig}
+        editMode={homeEditMode} setEditMode={setHomeEditMode}
+      />
     )
   }
   if (tab === "kalender") return <div style={{ padding: pad }}><CalendarTab isMobile={isMobile} events={calEvents} persons={persons} onAddEvent={onAddEvent} onDeleteEvent={onDeleteEvent} onOpenAddEvent={onOpenAddEvent} onOpenDayModal={onOpenDayModal} userId={userId} /></div>
@@ -4556,6 +4936,13 @@ export default function SmartHub({ session, household }) {
   const [showArchive, setShowArchive] = useState(false)
   const [listsTopTab, setListsTopTab] = useState("todo")
   const [pushStatus, setPushStatus] = useState("unknown") // "unknown" | "denied" | "granted-no-sub" | "subscribed" | "unsupported"
+
+  // ── Home customization (persisted per device via localStorage) ──
+  const [homeConfig, setHomeConfig] = useState(() => loadHomeConfig())
+  const [homeEditMode, setHomeEditMode] = useState(false)
+  useEffect(() => {
+    try { localStorage.setItem("smarthub:homeConfig", JSON.stringify(homeConfig)) } catch {}
+  }, [homeConfig])
   const [themeColor, setThemeColorState] = useState(() => getThemeColor())
   function setThemeColor(c) {
     setThemeColorState(c)
@@ -5552,6 +5939,7 @@ export default function SmartHub({ session, household }) {
     onDeleteShoppingItem: handleDeleteShoppingItem,
     onClearCheckedShopping: handleClearCheckedShopping,
     listsTopTab, setListsTopTab,
+    homeConfig, setHomeConfig, homeEditMode, setHomeEditMode,
   }
 
   // ─── Mobile view ───
