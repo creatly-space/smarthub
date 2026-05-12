@@ -2053,10 +2053,104 @@ function ShoppingList({ items, onAdd, onToggle, onDelete, onClearChecked }) {
 }
 
 // Kompakt widget för Hem-vy och TV
-function ShoppingCard({ items, onToggle, onAdd, fill, dark }) {
+// Virtuellt tangentbord för TV-bruk (Pi-kiosk har inget on-screen keyboard).
+// Renderas som overlay-bottom-sheet.
+function VirtualKeyboard({ value, onChange, onSubmit, onClose, suggestions = [] }) {
+  const [shift, setShift] = useState(false)
+  const rows = [
+    "1234567890".split(""),
+    "qwertyuiopå".split(""),
+    "asdfghjklöä".split(""),
+    "zxcvbnm".split(""),
+  ]
+  function press(k) {
+    onChange(value + (shift ? k.toUpperCase() : k))
+    setShift(false)
+  }
+  function backspace() { onChange(value.slice(0, -1)) }
+  function space() { onChange(value + " ") }
+  function tryVoice() {
+    const SR = window.webkitSpeechRecognition || window.SpeechRecognition
+    if (!SR) return
+    const rec = new SR()
+    rec.lang = "sv-SE"; rec.continuous = false; rec.interimResults = false
+    rec.onresult = e => onChange((value ? value + " " : "") + e.results[0][0].transcript)
+    rec.start()
+  }
+
+  const keyBase = {
+    minWidth: 56, height: 56, padding: "0 4px",
+    fontSize: 22, fontWeight: 600,
+    background: t.card, border: `1px solid ${t.cardBorder}`, borderRadius: 10,
+    cursor: "pointer", fontFamily: "Nunito, sans-serif",
+    color: t.text, flex: "1 1 0",
+  }
+
+  return (
+    <div onClick={e => e.stopPropagation()} style={{
+      position: "fixed", bottom: 0, left: 0, right: 0,
+      zIndex: 9999,
+      background: "rgba(248,249,251,0.97)",
+      backdropFilter: "blur(12px)",
+      borderTop: `1px solid ${t.cardBorder}`,
+      boxShadow: "0 -8px 32px rgba(0,0,0,0.15)",
+      padding: 12,
+    }}>
+      {/* Inputfält + förslag */}
+      <div style={{ marginBottom: 10, display: "flex", gap: 8, alignItems: "center" }}>
+        <div style={{ flex: 1, background: t.card, border: `2px solid ${ACCENT.todo}`, borderRadius: 12, padding: "12px 16px", fontSize: 20, fontFamily: "Nunito, sans-serif", color: t.text, minHeight: 28 }}>
+          {value || <span style={{ color: t.textMuted }}>Skriv vara...</span>}
+        </div>
+        <button onClick={tryVoice} style={{ ...keyBase, minWidth: 56, flex: "0 0 auto", background: ACCENT.calendar, color: "#fff", fontSize: 18 }}>🎤</button>
+        <button onClick={onClose} style={{ ...keyBase, minWidth: 56, flex: "0 0 auto", background: t.inputBg }}>✕</button>
+      </div>
+
+      {/* Förslag-chips */}
+      {suggestions.length > 0 && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+          {suggestions.slice(0, 8).map(s => (
+            <button key={s.name} onClick={() => onSubmit(s.name)} style={{
+              padding: "8px 14px", borderRadius: 20,
+              background: `${ACCENT.todo}15`, border: `1px solid ${ACCENT.todo}30`,
+              color: ACCENT.todo, fontFamily: "Nunito, sans-serif", fontSize: 15, fontWeight: 700,
+              cursor: "pointer",
+            }}>{s.name}</button>
+          ))}
+        </div>
+      )}
+
+      {/* QWERTY */}
+      {rows.map((row, i) => (
+        <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6, justifyContent: "center" }}>
+          {i === 3 && <button onClick={() => setShift(s => !s)} style={{ ...keyBase, minWidth: 80, background: shift ? ACCENT.calendar : keyBase.background, color: shift ? "#fff" : keyBase.color }}>⇧</button>}
+          {row.map(k => (
+            <button key={k} onClick={() => press(k)} style={keyBase}>
+              {shift ? k.toUpperCase() : k}
+            </button>
+          ))}
+          {i === 3 && <button onClick={backspace} style={{ ...keyBase, minWidth: 80, background: t.inputBg }}>⌫</button>}
+        </div>
+      ))}
+      {/* Mellanslag + Lägg till */}
+      <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+        <button onClick={space} style={{ ...keyBase, flex: 3 }}>mellanslag</button>
+        <button
+          onClick={() => value.trim() && onSubmit(value.trim())}
+          disabled={!value.trim()}
+          style={{ ...keyBase, flex: 2, background: value.trim() ? ACCENT.todo : t.inputBg, color: value.trim() ? "#fff" : t.textMuted, fontWeight: 700 }}
+        >
+          ✓ Lägg till
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function ShoppingCard({ items, onToggle, onAdd, fill, dark, virtualKeyboard }) {
   const active = items.filter(i => !i.done)
   const done = items.filter(i => i.done)
   const [showQuickAdd, setShowQuickAdd] = useState(false)
+  const [vkValue, setVkValue] = useState("")
   const txtColor = dark ? "#e8eaf0" : t.text
   const txtSec = dark ? "rgba(255,255,255,0.6)" : t.textSec
   const txtMuted = dark ? "rgba(255,255,255,0.35)" : t.textMuted
@@ -2067,7 +2161,19 @@ function ShoppingCard({ items, onToggle, onAdd, fill, dark }) {
   function handleAdd(text) {
     onAdd(text)
     setShowQuickAdd(false)
+    setVkValue("")
   }
+
+  // Förslag baserat på vad användaren skrivit i virtuella tangentbordet
+  const vkSuggestions = useMemo(() => {
+    if (!virtualKeyboard) return []
+    if (!vkValue || vkValue.length < 2) {
+      // Visa de mest använda när inget skrivits
+      return ["Mjölk", "Bröd", "Smör", "Ost", "Ägg", "Pasta", "Kaffe", "Bananer"]
+        .map(name => ({ name }))
+    }
+    return findGroceryMatches(vkValue, 8)
+  }, [vkValue, virtualKeyboard])
 
   return (
     <Card dark={dark} accent={ACCENT.todo} style={fill ? { flex: 1, minHeight: 0 } : {}}>
@@ -2090,10 +2196,21 @@ function ShoppingCard({ items, onToggle, onAdd, fill, dark }) {
           </div>
         </div>
 
-        {showQuickAdd && onAdd && (
+        {showQuickAdd && onAdd && !virtualKeyboard && (
           <div style={{ marginBottom: 8 }}>
             <GroceryAutocomplete onSubmit={handleAdd} placeholder="Vara..." small autoFocus dark={dark} />
           </div>
+        )}
+        {/* Render virtual keyboard via portal till body så det inte clip:as */}
+        {showQuickAdd && onAdd && virtualKeyboard && typeof document !== "undefined" && createPortal(
+          <VirtualKeyboard
+            value={vkValue}
+            onChange={setVkValue}
+            onSubmit={handleAdd}
+            onClose={() => { setShowQuickAdd(false); setVkValue("") }}
+            suggestions={vkSuggestions}
+          />,
+          document.body
         )}
 
         <div style={containerStyle}>
@@ -4130,7 +4247,7 @@ const LAYOUT_PRESETS = {
 function renderTvSlotWidget(type, p) {
   if (type === "calendar") return <CalendarWidget events={p.calEvents} persons={p.persons} fill onDayClick={p.onDayClick} dark={p.dark} />
   if (type === "todo")     return <TodoCard pinnedList={p.pinnedList} onToggle={p.onToggleItem} fill dark={p.dark} />
-  if (type === "shopping") return <ShoppingCard items={p.shoppingItems || []} onToggle={p.onToggleShoppingItem} onAdd={p.onAddShoppingItem} fill dark={p.dark} />
+  if (type === "shopping") return <ShoppingCard items={p.shoppingItems || []} onToggle={p.onToggleShoppingItem} onAdd={p.onAddShoppingItem} fill dark={p.dark} virtualKeyboard />
   if (type === "meal")     return <MealCard fill mealsByWeekday={p.mealsByWeekday} mealTagsLocal={p.mealTagsLocal} onSetMealText={() => {}} onSetMealTag={() => {}} dark={p.dark} />
   if (type === "events")   return <TvEventsCard events={p.calEvents} persons={p.persons} dark={p.dark} />
   if (type === "countdown") return <TvCountdownCard countdowns={p.countdowns} dark={p.dark} />
@@ -4246,21 +4363,23 @@ function TvEventsCard({ events, persons, dark }) {
 // Renderar slot-grid baserat på vald layout
 function TvLayoutGrid({ layoutKey, slots, widgetProps, slotOverlay }) {
   const preset = LAYOUT_PRESETS[layoutKey] || LAYOUT_PRESETS.standard
+  // minWidth: 0 viktigt — låter flex-items shrinka istället för att tvinga overflow
+  const slotStyle = (flex) => ({ flex, display: "flex", minHeight: 0, minWidth: 0, position: "relative", overflow: "hidden" })
 
   // Sidebar-layouten är speciell: horisontell delning
   if (preset.sidebarLayout) {
     return (
-      <div style={{ flex: 1, display: "flex", gap: 10, minHeight: 0 }}>
-        <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
+      <div style={{ flex: 1, display: "flex", gap: 10, minHeight: 0, minWidth: 0 }}>
+        <div style={slotStyle(1)}>
           {renderTvSlotWidget(slots.left, widgetProps)}
           {slotOverlay && slotOverlay("left", slots.left)}
         </div>
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10, minHeight: 0 }}>
-          <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10, minHeight: 0, minWidth: 0 }}>
+          <div style={slotStyle(1)}>
             {renderTvSlotWidget(slots.topRight, widgetProps)}
             {slotOverlay && slotOverlay("topRight", slots.topRight)}
           </div>
-          <div style={{ flex: 1, display: "flex", minHeight: 0, position: "relative" }}>
+          <div style={slotStyle(1)}>
             {renderTvSlotWidget(slots.bottomRight, widgetProps)}
             {slotOverlay && slotOverlay("bottomRight", slots.bottomRight)}
           </div>
@@ -4272,9 +4391,9 @@ function TvLayoutGrid({ layoutKey, slots, widgetProps, slotOverlay }) {
   return (
     <>
       {preset.rows.map((row, ri) => (
-        <div key={ri} style={{ flex: row.flex, display: "flex", gap: 10, minHeight: 0 }}>
+        <div key={ri} style={{ flex: row.flex, display: "flex", gap: 10, minHeight: 0, minWidth: 0 }}>
           {row.slots.map(s => (
-            <div key={s.key} style={{ flex: s.flex, display: "flex", minHeight: 0, position: "relative" }}>
+            <div key={s.key} style={slotStyle(s.flex)}>
               {renderTvSlotWidget(slots[s.key], widgetProps)}
               {slotOverlay && slotOverlay(s.key, slots[s.key])}
             </div>
