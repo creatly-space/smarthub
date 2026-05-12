@@ -24,15 +24,18 @@ const ALL_GROCERIES = (() => {
 function findGroceryMatches(query, max = 6) {
   const q = (query || "").toLowerCase().trim()
   if (q.length < 2) return []
+  // Sortera: exakta matchningar först, sen startsWith, sen substring.
+  // Behåll exakta matches synliga (annars försvinner sista förslaget när användaren skrivit klart).
+  const exact = []
   const starts = []
   const contains = []
   for (const g of ALL_GROCERIES) {
-    if (g.lower === q) continue // skippa exakta matches (du vill ha förslag, inte vad du redan skrev)
-    if (g.lower.startsWith(q)) starts.push(g)
+    if (g.lower === q) exact.push(g)
+    else if (g.lower.startsWith(q)) starts.push(g)
     else if (g.lower.includes(q)) contains.push(g)
-    if (starts.length >= max) break
+    if (exact.length + starts.length >= max) break
   }
-  return [...starts, ...contains].slice(0, max)
+  return [...exact, ...starts, ...contains].slice(0, max)
 }
 function categoryOf(itemName) {
   const found = ALL_GROCERIES.find(g => g.lower === itemName.toLowerCase())
