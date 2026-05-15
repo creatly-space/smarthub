@@ -297,6 +297,23 @@ function findByName(items, query, getName, requireActive) {
 }
 
 function fmtTime(iso) { if (!iso) return ""; const d = new Date(iso); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0") }
+// Normaliserar datum-strängar från AI:n till korrekt UTC ISO.
+// AI:n kan skicka "2026-05-16T14:00:00", "...Z" eller "...+02:00" — vi vill att alla tolkas som svensk lokal tid.
+// Strängar med explicit numerisk offset (+/-HH:MM) behåller sin offset (AI:n vet vad den gör).
+// Z-suffix och naive-strängar tolkas som lokal tid (det är så användaren talar).
+function normalizeAiDateTime(text) {
+  if (!text) return text
+  const s = String(text).trim()
+  if (/[T ]\d{2}:\d{2}(:\d{2})?[+-]\d{2}:?\d{2}$/.test(s)) {
+    const d = new Date(s)
+    return isNaN(d) ? s : d.toISOString()
+  }
+  const clean = s.replace(/Z$/i, "")
+  const m = clean.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/)
+  if (!m) return s
+  const local = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]), Number(m[6] || 0))
+  return isNaN(local) ? s : local.toISOString()
+}
 function fmtDate(date) { return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0") }
 function genCode() { const c = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; let r = ""; for (let i = 0; i < 6; i++) r += c[Math.floor(Math.random() * c.length)]; return r }
 function daysLeft(d) { if (!d) return null; return Math.ceil((new Date(d) - new Date()) / 86400000) }
@@ -5841,10 +5858,12 @@ export default function SmartHub({ session, household }) {
         return { ok: true, message: `Arkiverade "${list.name}"` }
       }
       if (name === "add_event") {
+        const startIso = normalizeAiDateTime(args.start_time)
+        const endIso = normalizeAiDateTime(args.end_time)
         await handleAddEvent({
           title: args.title,
-          start_time: args.start_time,
-          end_time: args.end_time,
+          start_time: startIso,
+          end_time: endIso,
           location: args.location || null,
           color: persons[0]?.color || ACCENT.event,
           shared: true,
@@ -5852,7 +5871,7 @@ export default function SmartHub({ session, household }) {
             ? (args.recurrence_until ? { freq: args.recurrence, until: args.recurrence_until } : { freq: args.recurrence })
             : null,
         })
-        return { ok: true, message: `Lade till "${args.title}"${args.recurrence ? " (återkommande)" : ""} ${new Date(args.start_time).toLocaleDateString("sv-SE", { weekday: "long", day: "numeric", month: "long" })} ${fmtTime(args.start_time)}` }
+        return { ok: true, message: `Lade till "${args.title}"${args.recurrence ? " (återkommande)" : ""} ${new Date(startIso).toLocaleDateString("sv-SE", { weekday: "long", day: "numeric", month: "long" })} ${fmtTime(startIso)}` }
       }
       if (name === "delete_event") {
         const ev = findByName(calEvents, args.title, e => e.title)
