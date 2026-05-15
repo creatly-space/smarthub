@@ -3782,7 +3782,7 @@ function SettingsTab({ isMobile, session, household, members, foodPrefs, setFood
 // ════════════════════════════════════════════════
 //  AI CHAT
 // ════════════════════════════════════════════════
-function AiChat({ position = "fixed", callAi, executeTool }) {
+function AiChat({ position = "fixed", callAi, executeTool, transcribeAudio }) {
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState([
     { role: "ai", text: "Hej! Jag kan göra grejer i appen åt dig. Prova:\n• \"Lägg till mjölk på handlingslistan\"\n• \"Boka tandläkare imorgon kl 10\"\n• \"Bocka av äggen\"\n• \"Generera ny veckomeny\"\n• \"Vad äter vi på fredag?\"" },
@@ -3790,15 +3790,17 @@ function AiChat({ position = "fixed", callAi, executeTool }) {
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
   const [listening, setListening] = useState(false)
+  const [transcribing, setTranscribing] = useState(false)
   const messagesEndRef = useRef(null)
+  const recorderRef = useRef(null)
   // AI-historik i OpenAI-format (kumulerar mellan turer för löpande dialog).
   // Använder ref för att undvika stale-closure i async-handlern.
   const aiHistoryRef = useRef([])
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }) }, [messages])
 
-  async function handleSend() {
-    const text = input.trim()
+  async function handleSend(overrideText) {
+    const text = (typeof overrideText === "string" ? overrideText : input).trim()
     if (!text || loading) return
 
     // Säkerhetstimer: tvinga reset om något hänger > 60 sek
@@ -3876,19 +3878,99 @@ function AiChat({ position = "fixed", callAi, executeTool }) {
     }
   }
 
-  function handleMic() {
-    if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
+  async function handleMic() {
+    // Stoppa pågående inspelning — onstop tar hand om resten.
+    if (listening && recorderRef.current) {
+      try { recorderRef.current.stop() } catch {}
+      return
+    }
+    if (transcribing || loading) return
+
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       setMessages(p => [...p, { role: "ai", text: "Röstinmatning stöds inte i den här webbläsaren." }])
       return
     }
-    const SR = window.webkitSpeechRecognition || window.SpeechRecognition
-    if (listening) { setListening(false); return }
-    const rec = new SR()
-    rec.lang = "sv-SE"; rec.continuous = false; rec.interimResults = false
-    rec.onresult = e => { setInput(e.results[0][0].transcript); setListening(false) }
-    rec.onend = () => setListening(false)
-    rec.onerror = () => setListening(false)
-    setListening(true); rec.start()
+    if (!transcribeAudio) {
+      setMessages(p => [...p, { role: "ai", text: "Röstinmatning är inte konfigurerad." }])
+      return
+    }
+
+    let stream
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    } catch (e) {
+      console.error("[mic getUserMedia]", e)
+      const name = e?.name || ""
+      const msg = (name === "NotAllowedError" || name === "SecurityError")
+        ? "Mikrofonbehörighet nekad. Tillåt mikrofon i inställningarna."
+        : name === "NotFoundError"
+          ? "Ingen mikrofon hittades."
+          : "Kunde inte starta mikrofonen: " + (e?.message || name || "okänt fel")
+      setMessages(p => [...p, { role: "ai", text: msg }])
+      return
+    }
+
+    const chunks = []
+    let rec
+    try {
+      // Default mime: iOS Safari ger audio/mp4, Chrome ger audio/webm — Whisper accepterar båda.
+      rec = new MediaRecorder(stream)
+    } catch (e) {
+      console.error("[mic MediaRecorder]", e)
+      stream.getTracks().forEach(t => t.stop())
+      setMessages(p => [...p, { role: "ai", text: "Kunde inte starta inspelning: " + (e?.message || "okänt fel") }])
+      return
+    }
+
+    recorderRef.current = rec
+
+    rec.ondataavailable = ev => { if (ev.data && ev.data.size > 0) chunks.push(ev.data) }
+    rec.onerror = ev => { console.error("[mic recorder]", ev) }
+    rec.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop())
+      recorderRef.current = null
+      setListening(false)
+
+      if (chunks.length === 0) {
+        setMessages(p => [...p, { role: "ai", text: "Ingen inspelning gjord." }])
+        return
+      }
+
+      const mime = rec.mimeType || "audio/mp4"
+      const ext = mime.includes("webm") ? "webm" : mime.includes("ogg") ? "ogg" : mime.includes("wav") ? "wav" : "m4a"
+      const blob = new Blob(chunks, { type: mime })
+
+      if (blob.size < 1000) {
+        setMessages(p => [...p, { role: "ai", text: "Inspelningen var för kort. Försök igen." }])
+        return
+      }
+
+      setTranscribing(true)
+      try {
+        const text = await transcribeAudio(blob, ext)
+        if (!text) {
+          setMessages(p => [...p, { role: "ai", text: "Inget tal upptäckt." }])
+          return
+        }
+        // Auto-skicka direkt — riktig voice assistant.
+        await handleSend(text)
+      } catch (e) {
+        console.error("[mic transcribe]", e)
+        setMessages(p => [...p, { role: "ai", text: "Transkribering misslyckades: " + (e?.message || "okänt fel") }])
+      } finally {
+        setTranscribing(false)
+      }
+    }
+
+    try {
+      rec.start()
+      setListening(true)
+    } catch (e) {
+      console.error("[mic start]", e)
+      stream.getTracks().forEach(t => t.stop())
+      recorderRef.current = null
+      setMessages(p => [...p, { role: "ai", text: "Kunde inte starta inspelning: " + (e?.message || "okänt fel") }])
+    }
   }
 
   if (!open) {
@@ -3959,16 +4041,24 @@ function AiChat({ position = "fixed", callAi, executeTool }) {
       {listening && (
         <div style={{ padding: "8px 10px", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
           <div style={{ width: 8, height: 8, borderRadius: 4, background: "#dc2626", animation: "pulse 1s infinite" }} />
-          <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, fontWeight: 700, color: "#dc2626" }}>Lyssnar...</span>
+          <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, fontWeight: 700, color: "#dc2626" }}>Lyssnar... (tryck igen för att stoppa)</span>
+        </div>
+      )}
+      {transcribing && (
+        <div style={{ padding: "8px 10px", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+          <div style={{ width: 8, height: 8, borderRadius: 4, background: "#f59e0b", animation: "pulse 1s infinite" }} />
+          <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, fontWeight: 700, color: "#f59e0b" }}>Transkriberar...</span>
         </div>
       )}
       <div style={{ padding: "8px 10px", borderTop: `1px solid ${t.line}`, display: "flex", gap: 6 }}>
-        <button onClick={handleMic} style={{
-          width: 34, height: 34, borderRadius: 10, border: "none", cursor: "pointer",
-          background: listening ? "#dc262615" : t.inputBg,
+        <button onClick={handleMic} disabled={transcribing} style={{
+          width: 34, height: 34, borderRadius: 10, border: "none",
+          cursor: transcribing ? "default" : "pointer",
+          background: listening ? "#dc262615" : transcribing ? "#f59e0b15" : t.inputBg,
           display: "flex", alignItems: "center", justifyContent: "center",
+          opacity: transcribing ? 0.6 : 1,
         }}>
-          <Mic size={14} color={listening ? "#dc2626" : t.textSec} />
+          <Mic size={14} color={listening ? "#dc2626" : transcribing ? "#f59e0b" : t.textSec} />
         </button>
         <input value={input} onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === "Enter" && handleSend()}
@@ -5821,6 +5911,16 @@ export default function SmartHub({ session, household }) {
     return data
   }
 
+  // Skickar inspelad audio till ai-transcribe (Whisper). Returnerar transkriberad text.
+  async function transcribeAudio(blob, ext = "m4a") {
+    const form = new FormData()
+    form.append("file", blob, "audio." + ext)
+    const { data, error } = await supabase.functions.invoke("ai-transcribe", { body: form })
+    if (error) throw new Error(error.message || "Transkribering misslyckades")
+    if (data?.error) throw new Error(data.error)
+    return (data?.text || "").trim()
+  }
+
   // ── Render ──
   const fonts = (
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700;800&family=Nunito:wght@400;500;600;700;800&display=swap" />
@@ -5952,7 +6052,7 @@ export default function SmartHub({ session, household }) {
             <TabContent {...tabContentProps} />
           </div>
           <MobileNav tab={tab} setTab={setTab} themeColor={themeColor} />
-          <AiChat position="mobile" callAi={callAiChat} executeTool={executeAiTool} />
+          <AiChat position="mobile" callAi={callAiChat} executeTool={executeAiTool} transcribeAudio={transcribeAudio} />
         </div>
         {liftedModals}
       </>
@@ -5967,7 +6067,7 @@ export default function SmartHub({ session, household }) {
         <DesktopSidebar tab={tab} setTab={setTab} session={session} weather={weather} household={household} themeColor={themeColor} />
         <div style={{ flex: 1, overflow: "auto", minWidth: 0, position: "relative" }}>
           <TabContent {...tabContentProps} />
-          <AiChat position="desktop" callAi={callAiChat} executeTool={executeAiTool} />
+          <AiChat position="desktop" callAi={callAiChat} executeTool={executeAiTool} transcribeAudio={transcribeAudio} />
         </div>
       </div>
       {liftedModals}
