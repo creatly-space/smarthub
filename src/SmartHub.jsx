@@ -49,12 +49,111 @@ function categoryOf(itemName) {
 // ════════════════════════════════════════════════
 //  DESIGN TOKENS (from v11 mockup)
 // ════════════════════════════════════════════════
-const t = {
-  bg: "#f0f2f5", card: "#ffffff", cardBorder: "rgba(0,0,0,0.06)",
-  text: "#1a1a2e", textSec: "rgba(0,0,0,0.55)", textMuted: "rgba(0,0,0,0.25)",
-  line: "rgba(0,0,0,0.04)", inputBg: "rgba(0,0,0,0.03)", inputBorder: "rgba(0,0,0,0.08)",
+// ════════════════════════════════════════════════
+//  FÄRGTEMAN
+// ════════════════════════════════════════════════
+// Ett tema är ett komplett set tokens. Ingen komponent innehåller en egen
+// hex-kod för yta, text eller ram — allt går via t.* och ACCENT.*, och att
+// byta tema är att byta ut token-setet.
+//
+// t.* pekar på CSS-variabler på :root, så ett temabyte slår igenom utan att
+// React behöver rendera om. ACCENT.* speglar samma tema som riktiga hex-koder,
+// för att ett femtiotal ytor bygger genomskinliga bakgrunder genom att lägga
+// alfa direkt på koden (`${ACCENT.calendar}15`) — och "var(--x)15" är inte
+// giltig CSS. Båda kommer från samma THEMES-definition.
+const THEMES = {
+  default: {
+    label: "Standard", hint: "Ljus och neutral",
+    tokens: {
+      bg: "#f0f2f5", surface: "#ffffff", border: "rgba(0,0,0,0.06)",
+      text1: "#1a1a2e", text2: "rgba(0,0,0,0.55)", text3: "rgba(0,0,0,0.25)",
+      line: "rgba(0,0,0,0.04)", inputBg: "rgba(0,0,0,0.03)", inputBorder: "rgba(0,0,0,0.08)",
+    },
+    accents: { calendar: "#7c3aed", todo: "#059669", meal: "#d97706", event: "#2563eb", weather: "#0ea5e9" },
+  },
+  varm: {
+    label: "Varm", hint: "Beige och terrakotta",
+    tokens: {
+      bg: "#f7f1e8", surface: "#fffaf3", border: "rgba(80,50,20,0.10)",
+      text1: "#2e2016", text2: "rgba(46,32,22,0.62)", text3: "rgba(46,32,22,0.32)",
+      line: "rgba(80,50,20,0.07)", inputBg: "rgba(80,50,20,0.04)", inputBorder: "rgba(80,50,20,0.12)",
+    },
+    accents: { calendar: "#b45309", todo: "#4d7c0f", meal: "#c2410c", event: "#a16207", weather: "#0891b2" },
+  },
+  kall: {
+    label: "Kall", hint: "Blågrå och sval",
+    tokens: {
+      bg: "#eef2f7", surface: "#ffffff", border: "rgba(15,40,70,0.09)",
+      text1: "#0f1e2e", text2: "rgba(15,30,46,0.60)", text3: "rgba(15,30,46,0.30)",
+      line: "rgba(15,40,70,0.05)", inputBg: "rgba(15,40,70,0.035)", inputBorder: "rgba(15,40,70,0.11)",
+    },
+    accents: { calendar: "#0369a1", todo: "#0f766e", meal: "#7c3aed", event: "#1d4ed8", weather: "#0284c7" },
+  },
+  skog: {
+    label: "Skog", hint: "Grön och dämpad",
+    tokens: {
+      bg: "#eef3ee", surface: "#fbfdfb", border: "rgba(20,50,30,0.10)",
+      text1: "#14241a", text2: "rgba(20,36,26,0.60)", text3: "rgba(20,36,26,0.30)",
+      line: "rgba(20,50,30,0.06)", inputBg: "rgba(20,50,30,0.04)", inputBorder: "rgba(20,50,30,0.12)",
+    },
+    accents: { calendar: "#15803d", todo: "#166534", meal: "#a16207", event: "#0f766e", weather: "#0891b2" },
+  },
+  mork: {
+    label: "Mörk", hint: "Mörk bakgrund, ljus text",
+    tokens: {
+      bg: "#101219", surface: "#1a1d28", border: "rgba(255,255,255,0.10)",
+      text1: "#e9ebf2", text2: "rgba(255,255,255,0.62)", text3: "rgba(255,255,255,0.34)",
+      line: "rgba(255,255,255,0.07)", inputBg: "rgba(255,255,255,0.05)", inputBorder: "rgba(255,255,255,0.14)",
+    },
+    accents: { calendar: "#a78bfa", todo: "#34d399", meal: "#fbbf24", event: "#60a5fa", weather: "#38bdf8" },
+  },
+  kontrast: {
+    label: "Kontrast", hint: "Maximal läsbarhet på avstånd",
+    tokens: {
+      bg: "#ffffff", surface: "#ffffff", border: "rgba(0,0,0,0.35)",
+      text1: "#000000", text2: "rgba(0,0,0,0.78)", text3: "rgba(0,0,0,0.50)",
+      line: "rgba(0,0,0,0.18)", inputBg: "#ffffff", inputBorder: "rgba(0,0,0,0.45)",
+    },
+    accents: { calendar: "#5b21b6", todo: "#065f46", meal: "#9a3412", event: "#1e3a8a", weather: "#075985" },
+  },
 }
-const ACCENT = { calendar: "#7c3aed", todo: "#059669", meal: "#d97706", event: "#2563eb", weather: "#0ea5e9" }
+const DEFAULT_THEME = "default"
+// token → CSS-variabel
+const THEME_VARS = {
+  bg: "--sh-bg", surface: "--sh-surface", border: "--sh-border",
+  text1: "--sh-text-1", text2: "--sh-text-2", text3: "--sh-text-3",
+  line: "--sh-line", inputBg: "--sh-input-bg", inputBorder: "--sh-input-border",
+}
+// Fallback-värdena gör att första målningen blir rätt även innan applyTheme körts.
+const DEFAULT_TOKENS = THEMES[DEFAULT_THEME].tokens
+const t = {
+  bg: `var(--sh-bg, ${DEFAULT_TOKENS.bg})`,
+  card: `var(--sh-surface, ${DEFAULT_TOKENS.surface})`,
+  cardBorder: `var(--sh-border, ${DEFAULT_TOKENS.border})`,
+  text: `var(--sh-text-1, ${DEFAULT_TOKENS.text1})`,
+  textSec: `var(--sh-text-2, ${DEFAULT_TOKENS.text2})`,
+  textMuted: `var(--sh-text-3, ${DEFAULT_TOKENS.text3})`,
+  line: `var(--sh-line, ${DEFAULT_TOKENS.line})`,
+  inputBg: `var(--sh-input-bg, ${DEFAULT_TOKENS.inputBg})`,
+  inputBorder: `var(--sh-input-border, ${DEFAULT_TOKENS.inputBorder})`,
+}
+const ACCENT = { ...THEMES[DEFAULT_THEME].accents }
+// Byter aktivt tema. Muterar ACCENT på plats eftersom objektet är importerat
+// på hundratals ställen; anroparen renderar om så att de nya värdena syns.
+function applyTheme(themeId) {
+  const theme = THEMES[themeId] || THEMES[DEFAULT_THEME]
+  Object.assign(ACCENT, theme.accents)
+  if (typeof document === "undefined") return
+  const root = document.documentElement.style
+  for (const [token, varName] of Object.entries(THEME_VARS)) {
+    root.setProperty(varName, theme.tokens[token])
+  }
+  for (const [name, color] of Object.entries(theme.accents)) {
+    root.setProperty(`--sh-accent-${name}`, color)
+  }
+  root.setProperty("--sh-accent", theme.accents.calendar)
+}
+applyTheme(DEFAULT_THEME)
 
 // ── Hem-vy widget-konfiguration (mobile only, persisted via localStorage) ──
 const HOME_WIDGET_META = {
@@ -2625,7 +2724,7 @@ function ListsView({ lists, pinnedListId, onToggleItem, onTogglePin, onToggleSha
               <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
                 {list.shared
                   ? <span style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "2px 7px", borderRadius: 6, background: `${ACCENT.calendar}10`, fontSize: 10, fontWeight: 700, color: ACCENT.calendar, fontFamily: "Nunito, sans-serif" }}><Users size={10} /> Delad</span>
-                  : <span style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "2px 7px", borderRadius: 6, background: `${t.textMuted}20`, fontSize: 10, fontWeight: 700, color: t.textSec, fontFamily: "Nunito, sans-serif" }}><Lock size={10} /> Privat</span>}
+                  : <span style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "2px 7px", borderRadius: 6, background: t.inputBg, fontSize: 10, fontWeight: 700, color: t.textSec, fontFamily: "Nunito, sans-serif" }}><Lock size={10} /> Privat</span>}
                 {pinned && <span style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "2px 7px", borderRadius: 6, background: `${ACCENT.todo}10`, fontSize: 10, fontWeight: 700, color: ACCENT.todo, fontFamily: "Nunito, sans-serif" }}><Home size={10} /> Hem</span>}
               </div>
             </div>
@@ -2927,7 +3026,7 @@ function MealCard({ fill, mealsByWeekday, mealTagsLocal, onSetMealText, onSetMea
                         display: "inline-flex", alignItems: "center", gap: 3,
                         padding: "2px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700,
                         fontFamily: "Nunito, sans-serif", cursor: "pointer",
-                        background: tagId === tg.id ? `${tg.color}20` : `${t.textMuted}15`,
+                        background: tagId === tg.id ? `${tg.color}20` : t.inputBg,
                         color: tagId === tg.id ? tg.color : t.textSec,
                         border: tagId === tg.id ? `1.5px solid ${tg.color}40` : "1.5px solid transparent",
                       }}>{tg.icon} {tg.label}</button>
@@ -3853,7 +3952,7 @@ function TvEditorSection({ onBack, isMobile, tvData, tvSlots, onSaveTvSlots, tvP
               </button>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              {TV_SLOT_OPTIONS.map(opt => {
+              {getTvSlotOptions().map(opt => {
                 const Icon = opt.icon
                 const active = slots[pickerOpen] === opt.id
                 return (
@@ -3896,10 +3995,78 @@ function AccountSection({ onBack }) {
   )
 }
 
-function SettingsTab({ isMobile, session, household, members, foodPrefs, setFoodPrefs, onCreateInvite, tvData, tvSlots, onSaveTvSlots, tvPhotoUrl, onSaveTvPhoto, onUploadTvPhoto, userId, themeColor, setThemeColor, displayName, onSaveDisplayName, pushStatus, onEnablePush, onDisablePush }) {
+// Ett kort per tema. Miniatyren målas med temats EGNA tokens, så alla sex
+// alternativen syns sida vid sida utan att man måste prova sig fram.
+function ThemeCard({ theme, active, onClick }) {
+  const tk = theme.tokens
+  return (
+    <button onClick={onClick} style={{
+      display: "flex", flexDirection: "column", gap: 6, padding: 8,
+      borderRadius: 12, cursor: "pointer", textAlign: "left",
+      background: active ? `${ACCENT.calendar}0c` : "transparent",
+      border: active ? `2px solid ${ACCENT.calendar}` : `2px solid ${t.cardBorder}`,
+      minWidth: 104, flex: "1 1 104px",
+    }}>
+      <div style={{ background: tk.bg, borderRadius: 8, padding: 7 }}>
+        <div style={{ background: tk.surface, border: `1px solid ${tk.border}`, borderRadius: 6, padding: 7 }}>
+          <div style={{ height: 5, width: "70%", background: tk.text1, borderRadius: 3 }} />
+          <div style={{ height: 4, width: "45%", background: tk.text2, borderRadius: 2, marginTop: 4 }} />
+          <div style={{ display: "flex", gap: 3, marginTop: 7 }}>
+            {Object.values(theme.accents).slice(0, 4).map((c, i) => (
+              <div key={i} style={{ width: 11, height: 11, borderRadius: 6, background: c }} />
+            ))}
+          </div>
+        </div>
+      </div>
+      <div>
+        <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, fontWeight: 800, color: t.text }}>{theme.label}</div>
+        <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 10, color: t.textMuted, lineHeight: 1.3 }}>{theme.hint}</div>
+      </div>
+    </button>
+  )
+}
+
+function ThemeSection({ onBack, mobileTheme, tvTheme, onSetMobileTheme, onSetTvTheme }) {
+  const groups = [
+    {
+      title: "Min mobil", icon: "📱",
+      desc: "Gäller bara dig. Carro behåller sitt eget val.",
+      value: mobileTheme, onChange: onSetMobileTheme,
+    },
+    {
+      title: "Köks-TV:n", icon: "🖥️",
+      desc: "Delas av hela hushållet och slår igenom på väggskärmen direkt.",
+      value: tvTheme, onChange: onSetTvTheme,
+    },
+  ]
+  return (
+    <div>
+      <SectionHeader title="Färgtema" onBack={onBack} />
+      {groups.map(g => (
+        <Card key={g.title} style={{ marginBottom: 12 }}>
+          <div style={{ padding: 16 }}>
+            <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 800, color: t.text }}>{g.icon} {g.title}</div>
+            <p style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textSec, margin: "4px 0 12px" }}>{g.desc}</p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {Object.entries(THEMES).map(([id, theme]) => (
+                <ThemeCard key={id} theme={theme} active={g.value === id} onClick={() => g.onChange(id)} />
+              ))}
+            </div>
+          </div>
+        </Card>
+      ))}
+      <p style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textMuted, margin: "0 4px" }}>
+        Färger på enskilda widgets och händelser väljs där de skapas, ur en fast palett.
+      </p>
+    </div>
+  )
+}
+
+function SettingsTab({ isMobile, session, household, members, foodPrefs, setFoodPrefs, onCreateInvite, tvData, tvSlots, onSaveTvSlots, tvPhotoUrl, onSaveTvPhoto, onUploadTvPhoto, userId, themeColor, setThemeColor, displayName, onSaveDisplayName, pushStatus, onEnablePush, onDisablePush, mobileTheme, tvTheme, onSetMobileTheme, onSetTvTheme }) {
   const [activeSection, setActiveSection] = useState(null)
   const sections = [
     { id: "profile", icon: User, label: "Profil", desc: "Namn, profilbild" },
+    { id: "theme", icon: Sparkles, label: "Färgtema", desc: "Tema för mobilen och köks-TV:n" },
     { id: "tv", icon: Monitor, label: "TV-editor", desc: "Anpassa TV-vyn, widgets & layout" },
     { id: "household", icon: Users, label: "Hushåll & Medlemmar", desc: "Invite-kod, medlemmar" },
     { id: "food", icon: UtensilsCrossed, label: "Matpreferenser", desc: "Gillar, gillar inte, budget" },
@@ -3907,6 +4074,7 @@ function SettingsTab({ isMobile, session, household, members, foodPrefs, setFood
   ]
   if (activeSection === "tv") return <TvEditorSection onBack={() => setActiveSection(null)} isMobile={isMobile} tvData={tvData} tvSlots={tvSlots} onSaveTvSlots={onSaveTvSlots} tvPhotoUrl={tvPhotoUrl} onSaveTvPhoto={onSaveTvPhoto} onUploadTvPhoto={onUploadTvPhoto} />
   if (activeSection === "profile") return <ProfileSection onBack={() => setActiveSection(null)} session={session} themeColor={themeColor} setThemeColor={setThemeColor} displayName={displayName} onSaveDisplayName={onSaveDisplayName} pushStatus={pushStatus} onEnablePush={onEnablePush} onDisablePush={onDisablePush} />
+  if (activeSection === "theme") return <ThemeSection onBack={() => setActiveSection(null)} mobileTheme={mobileTheme} tvTheme={tvTheme} onSetMobileTheme={onSetMobileTheme} onSetTvTheme={onSetTvTheme} />
   if (activeSection === "household") return <HouseholdSection onBack={() => setActiveSection(null)} household={household} members={members} userId={userId} onCreateInvite={onCreateInvite} />
   if (activeSection === "food") return <FoodPrefsSection onBack={() => setActiveSection(null)} foodPrefs={foodPrefs} setFoodPrefs={setFoodPrefs} />
   if (activeSection === "account") return <AccountSection onBack={() => setActiveSection(null)} />
@@ -4582,6 +4750,7 @@ function TabContent({
   session, household, members, onCreateInvite, tvData, tvSlots, onSaveTvSlots,
   tvPhotoUrl, onSaveTvPhoto, onUploadTvPhoto,
   themeColor, setThemeColor,
+  mobileTheme, tvTheme, onSetMobileTheme, onSetTvTheme,
   displayName, onSaveDisplayName,
   pushStatus, onEnablePush, onDisablePush,
   // activity + countdowns + meal history
@@ -4710,6 +4879,8 @@ function TabContent({
         tvPhotoUrl={tvPhotoUrl} onSaveTvPhoto={onSaveTvPhoto} onUploadTvPhoto={onUploadTvPhoto}
         userId={userId}
         themeColor={themeColor} setThemeColor={setThemeColor}
+        mobileTheme={mobileTheme} tvTheme={tvTheme}
+        onSetMobileTheme={onSetMobileTheme} onSetTvTheme={onSetTvTheme}
         displayName={displayName} onSaveDisplayName={onSaveDisplayName}
         pushStatus={pushStatus} onEnablePush={onEnablePush} onDisablePush={onDisablePush} />
     </div>
@@ -4794,16 +4965,20 @@ function DesktopSidebar({ tab, setTab, session, weather, household, themeColor =
   )
 }
 
-// TV-widgets som kan placeras i slots
-const TV_SLOT_OPTIONS = [
-  { id: "calendar",  label: "Kalender", color: ACCENT.calendar, icon: CalendarDays },
-  { id: "todo",      label: "Att göra", color: ACCENT.todo,     icon: ListChecks },
-  { id: "shopping",  label: "Inköp",    color: ACCENT.todo,     icon: ShoppingCart },
-  { id: "meal",      label: "Matsedel", color: ACCENT.meal,     icon: UtensilsCrossed },
-  { id: "events",    label: "Dagens händelser", color: ACCENT.event, icon: CalendarDays },
-  { id: "countdown", label: "Nedräkning", color: "#db2777", icon: Sparkles },
-  { id: "empty",     label: "Tom",      color: t.textMuted,     icon: X },
-]
+// TV-widgets som kan placeras i slots.
+// Funktion och inte konstant: ACCENT muteras vid temabyte, och ett objekt som
+// fångade värdena vid modulladdning hade fastnat i standardtemat.
+function getTvSlotOptions() {
+  return [
+    { id: "calendar",  label: "Kalender", color: ACCENT.calendar, icon: CalendarDays },
+    { id: "todo",      label: "Att göra", color: ACCENT.todo,     icon: ListChecks },
+    { id: "shopping",  label: "Inköp",    color: ACCENT.todo,     icon: ShoppingCart },
+    { id: "meal",      label: "Matsedel", color: ACCENT.meal,     icon: UtensilsCrossed },
+    { id: "events",    label: "Dagens händelser", color: ACCENT.event, icon: CalendarDays },
+    { id: "countdown", label: "Nedräkning", color: "#db2777", icon: Sparkles },
+    { id: "empty",     label: "Tom",      color: t.textMuted,     icon: X },
+  ]
+}
 const DEFAULT_TV_SLOTS = { layout: "standard", main: "calendar", bottomLeft: "todo", bottomRight: "meal" }
 const SLOT_LABELS = {
   main: "huvud-rutan",
@@ -5318,6 +5493,21 @@ export default function SmartHub({ session, household }) {
     }
   }, [themeColor])
 
+  // ── Färgtema ──
+  // Mobilen har ett tema per användare, TV:n ett per hushåll. De hålls isär
+  // med flit: att byta tema på sin egen telefon ska inte ändra väggskärmen
+  // för alla andra.
+  const [mobileTheme, setMobileTheme] = useState(DEFAULT_THEME)
+  const [tvTheme, setTvTheme] = useState(DEFAULT_THEME)
+  // ACCENT muteras på plats vid temabyte. CSS-variablerna slår igenom av sig
+  // själva, men hex-värdena kräver en omrendering för att synas.
+  const [, forceThemeRender] = useState(0)
+  const activeTheme = view === "tv" ? tvTheme : mobileTheme
+  useEffect(() => {
+    applyTheme(activeTheme)
+    forceThemeRender(n => n + 1)
+  }, [activeTheme])
+
   // ── Data state (synced from Supabase, same shape as v10) ──
   const [lists, setLists] = useState([])
   const [todos, setTodos] = useState([])
@@ -5523,9 +5713,33 @@ export default function SmartHub({ session, household }) {
   useEffect(() => {
     if (!householdId) return
     let cancelled = false
-    supabase.from("household_members").select("user_id,role,joined_at,display_name").eq("household_id", householdId)
+    supabase.from("household_members").select("user_id,role,joined_at,display_name,theme").eq("household_id", householdId)
       .then(({ data }) => { if (!cancelled && data) setMembers(data) })
     return () => { cancelled = true }
+  }, [householdId])
+
+  // ── Load: mitt eget tema (mobil) ──
+  useEffect(() => {
+    const mine = members.find(m => m.user_id === userId)
+    if (mine?.theme && THEMES[mine.theme]) setMobileTheme(mine.theme)
+  }, [members, userId])
+
+  // ── Load + subscribe: hushållets TV-tema ──
+  // Prenumerationen är poängen: byter man TV-tema i mobilen ska väggskärmen
+  // följa med direkt, utan att kiosken behöver startas om.
+  useEffect(() => {
+    if (!householdId) return
+    let cancelled = false
+    supabase.from("households").select("tv_theme").eq("id", householdId).maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled && data?.tv_theme && THEMES[data.tv_theme]) setTvTheme(data.tv_theme)
+      })
+    const ch = supabase.channel("household-theme:" + householdId).on("postgres_changes", {
+      event: "UPDATE", schema: "public", table: "households", filter: "id=eq." + householdId,
+    }, p => {
+      if (p.new?.tv_theme && THEMES[p.new.tv_theme]) setTvTheme(p.new.tv_theme)
+    }).subscribe()
+    return () => { cancelled = true; supabase.removeChannel(ch) }
   }, [householdId])
 
   // ── Load + subscribe: countdowns ──
@@ -6107,6 +6321,35 @@ export default function SmartHub({ session, household }) {
     const { error } = await supabase.from("invites").insert({ household_id: householdId, code, created_by: userId })
     return error ? null : code
   }
+  // Mitt eget tema — påverkar bara min mobil.
+  async function handleSetMobileTheme(themeId) {
+    if (!THEMES[themeId] || !householdId || !userId) return
+    const before = mobileTheme
+    setMobileTheme(themeId)
+    setMembers(p => p.map(m => m.user_id === userId ? { ...m, theme: themeId } : m))
+    const { data, error } = await supabase.from("household_members")
+      .update({ theme: themeId })
+      .eq("household_id", householdId).eq("user_id", userId).select()
+    if (error || !data || data.length === 0) {
+      setMobileTheme(before)
+      setMembers(p => p.map(m => m.user_id === userId ? { ...m, theme: before } : m))
+      showToast("Kunde inte spara temat")
+    }
+  }
+  // Hushållets TV-tema. Går via set_tv_theme i stället för en direkt update,
+  // eftersom households.UPDATE är låst till ägaren för att skydda namnbytet —
+  // men vilken medlem som helst ska kunna ställa väggskärmen.
+  async function handleSetTvTheme(themeId) {
+    if (!THEMES[themeId] || !householdId) return
+    const before = tvTheme
+    setTvTheme(themeId)
+    const { error } = await supabase.rpc("set_tv_theme", { p_household_id: householdId, p_theme: themeId })
+    if (error) {
+      setTvTheme(before)
+      console.error("[handleSetTvTheme]", error)
+      showToast("Kunde inte spara TV-temat")
+    }
+  }
   // Spara visningsnamn för aktuell användare
   async function handleSaveDisplayName(name) {
     const trimmed = (name || "").trim()
@@ -6378,6 +6621,8 @@ export default function SmartHub({ session, household }) {
     tvSlots, onSaveTvSlots: handleSaveTvSlots,
     tvPhotoUrl, onSaveTvPhoto: handleSaveTvPhoto, onUploadTvPhoto: handleUploadTvPhoto,
     themeColor, setThemeColor,
+    mobileTheme, tvTheme,
+    onSetMobileTheme: handleSetMobileTheme, onSetTvTheme: handleSetTvTheme,
     displayName: members.find(m => m.user_id === userId)?.display_name || "",
     onSaveDisplayName: handleSaveDisplayName,
     pushStatus, onEnablePush: handleEnablePush, onDisablePush: handleDisablePush,
