@@ -10,6 +10,10 @@ import {
   Archive, ArchiveRestore, Search, Repeat, Bell, BellOff, ShoppingCart,
 } from "lucide-react"
 import groceriesData from "./data/groceries.json"
+import {
+  formatTime, formatDate, toISO, dayKey, todayKey,
+  keyToDate, dateToKey as fmtDate, dayBounds,
+} from "./lib/time"
 
 // Plattlista över alla matvaror för fuzzy-matching, kategoriserad används för UI om vi vill
 const ALL_GROCERIES = (() => {
@@ -296,11 +300,15 @@ function findByName(items, query, getName, requireActive) {
   return pool.find(i => q.includes(getName(i).toLowerCase()))
 }
 
-function fmtTime(iso) { if (!iso) return ""; const d = new Date(iso); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0") }
+// Renderar ett event-klockslag. Heldagsevent har inget klockslag att visa.
+function eventTime(ev, field = "start_time") {
+  if (!ev || ev.all_day) return ""
+  return formatTime(ev[field])
+}
 // Normaliserar datum-strängar från AI:n till korrekt UTC ISO.
 // AI:n kan skicka "2026-05-16T14:00:00", "...Z" eller "...+02:00" — vi vill att alla tolkas som svensk lokal tid.
 // Strängar med explicit numerisk offset (+/-HH:MM) behåller sin offset (AI:n vet vad den gör).
-// Z-suffix och naive-strängar tolkas som lokal tid (det är så användaren talar).
+// Z-suffix och naive-strängar tolkas som svensk tid (det är så användaren talar).
 function normalizeAiDateTime(text) {
   if (!text) return text
   const s = String(text).trim()
@@ -311,10 +319,8 @@ function normalizeAiDateTime(text) {
   const clean = s.replace(/Z$/i, "")
   const m = clean.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/)
   if (!m) return s
-  const local = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]), Number(m[6] || 0))
-  return isNaN(local) ? s : local.toISOString()
+  return toISO(`${m[1]}-${m[2]}-${m[3]}`, `${m[4]}:${m[5]}`, Number(m[6] || 0)) || s
 }
-function fmtDate(date) { return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0") }
 function genCode() { const c = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; let r = ""; for (let i = 0; i < 6; i++) r += c[Math.floor(Math.random() * c.length)]; return r }
 function daysLeft(d) { if (!d) return null; return Math.ceil((new Date(d) - new Date()) / 86400000) }
 
@@ -347,36 +353,43 @@ function expandRecurring(event, from, to) {
   const rule = event.recurrence_rule
   const out = []
   const startMs = new Date(event.start_time).getTime()
-  const endMs = new Date(event.end_time).getTime()
-  const duration = endMs - startMs
-  const untilMs = rule.until ? new Date(rule.until + "T23:59:59").getTime() : Infinity
-  let current = new Date(startMs)
+  const duration = new Date(event.end_time).getTime() - startMs
+  const untilMs = rule.until ? new Date(toISO(rule.until, "23:59", 59)).getTime() : Infinity
+  // Vi stegar i svensk väggtid, inte i millisekunder. Ett träningspass 18:00
+  // ska ligga kvar 18:00 även efter att sommartiden slagit om — hade vi lagt
+  // på 7×86400000 ms hade det glidit till 17:00 eller 19:00 halva året.
+  const timeOfDay = formatTime(event.start_time)
+  let cursor = keyToDate(dayKey(event.start_time))
   let safety = 0
-  while (current.getTime() <= toMs && current.getTime() <= untilMs && safety < 1000) {
+  while (safety < 1000) {
     safety++
-    if (current.getTime() >= fromMs) {
+    const startIso = toISO(fmtDate(cursor), timeOfDay)
+    const ms = new Date(startIso).getTime()
+    if (ms > toMs || ms > untilMs) break
+    if (ms >= fromMs) {
       out.push({
         ...event,
-        id: event.id + "_occ_" + current.getTime(),
+        id: event.id + "_occ_" + ms,
         master_id: event.id,
-        start_time: current.toISOString(),
-        end_time: new Date(current.getTime() + duration).toISOString(),
+        start_time: startIso,
+        end_time: new Date(ms + duration).toISOString(),
       })
     }
-    // Stega framåt enligt frekvens
+    // Stega framåt enligt frekvens — rent datumräknande på kalenderdagar
+    const y = cursor.getFullYear(), m = cursor.getMonth(), d = cursor.getDate()
     if (rule.freq === "daily") {
-      current = new Date(current.getTime() + 86400000)
+      cursor = new Date(y, m, d + 1)
     } else if (rule.freq === "weekdays") {
-      current = new Date(current.getTime() + 86400000)
-      while (current.getDay() === 0 || current.getDay() === 6) {
-        current = new Date(current.getTime() + 86400000)
+      cursor = new Date(y, m, d + 1)
+      while (cursor.getDay() === 0 || cursor.getDay() === 6) {
+        cursor = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() + 1)
       }
     } else if (rule.freq === "weekly") {
-      current = new Date(current.getTime() + 7 * 86400000)
+      cursor = new Date(y, m, d + 7)
     } else if (rule.freq === "monthly") {
-      current = new Date(current.getFullYear(), current.getMonth() + 1, current.getDate(), current.getHours(), current.getMinutes(), current.getSeconds())
+      cursor = new Date(y, m + 1, d)
     } else if (rule.freq === "yearly") {
-      current = new Date(current.getFullYear() + 1, current.getMonth(), current.getDate(), current.getHours(), current.getMinutes(), current.getSeconds())
+      cursor = new Date(y + 1, m, d)
     } else {
       break
     }
@@ -471,8 +484,9 @@ const inputStyle = {
 // ════════════════════════════════════════════════
 function ClockDisplay({ size = "large", textColor, secColor }) {
   const now = useNow(1000)
-  const time = now.toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" })
-  const date = now.toLocaleDateString("sv-SE", { weekday: "long", day: "numeric", month: "long" })
+  // Klockan på väggen ska visa svensk tid även om Pi:n står på UTC.
+  const time = formatTime(now)
+  const date = formatDate(now, { weekday: "long", day: "numeric", month: "long" })
   const sizes = { huge: 96, large: 72, medium: 40, small: 32, tiny: 22 }
   return (
     <div style={{ textAlign: size === "large" || size === "huge" ? "center" : "left" }}>
@@ -506,7 +520,9 @@ function getPersonForEvent(ev, persons) {
   return idx >= 0 ? persons[idx] : persons[0]
 }
 function CalendarWidget({ events, persons, fill, compact, large, onDayClick, dark }) {
-  const today = new Date()
+  // Dagens datum enligt svensk tid, inte enhetens — annars byter väggskärmen
+  // dag vid fel tillfälle om Pi:n står på UTC.
+  const today = keyToDate(todayKey())
   const [vm, setVm] = useState(today.getMonth())
   const [vy, setVy] = useState(today.getFullYear())
 
@@ -519,35 +535,39 @@ function CalendarWidget({ events, persons, fill, compact, large, onDayClick, dar
   if (week.length > 0) { while (week.length < 7) week.push(null); weeks.push(week) }
 
   const eventsForView = useMemo(() => {
-    const monthStart = new Date(vy, vm, 1)
-    const monthEnd = new Date(vy, vm + 1, 0, 23, 59, 59)
+    // Svenska dygnsgränser för månadens första och sista dag.
+    const monthStart = dayBounds(fmtDate(new Date(vy, vm, 1))).from
+    const monthEnd = dayBounds(fmtDate(new Date(vy, vm + 1, 0))).to
     const expanded = expandEvents(events, monthStart, monthEnd)
     const out = {}
     expanded.forEach(ev => {
-      const start = new Date(ev.start_time)
-      const end = new Date(ev.end_time)
-      const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate())
-      const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate())
-      const isMultiDay = startDay.getTime() !== endDay.getTime()
+      // Vilket svenskt kalenderdygn eventet börjar och slutar på.
+      const startKey = dayKey(ev.start_time)
+      const endKey = dayKey(ev.end_time || ev.start_time)
+      const isMultiDay = startKey !== endKey
       const p = getPersonForEvent(ev, persons)
       // Iterera genom varje dag eventet täcker (för flerdagsevents)
-      let cursor = new Date(startDay)
+      const endCursor = keyToDate(endKey)
+      let cursor = keyToDate(startKey)
       let safety = 0
-      while (cursor <= endDay && safety < 366) {
+      while (cursor <= endCursor && safety < 366) {
         safety++
         if (cursor.getFullYear() === vy && cursor.getMonth() === vm) {
           const day = cursor.getDate()
+          const cursorKey = fmtDate(cursor)
           if (!out[day]) out[day] = []
           out[day].push({
-            id: ev.id + "_d" + fmtDate(cursor),
-            time: ev.all_day ? "" : fmtTime(ev.start_time),
+            id: ev.id + "_d" + cursorKey,
+            time: eventTime(ev),
             title: ev.title,
+            icon: ev.icon || null,
             color: p.color, name: p.name,
             recurring: !!ev.master_id,
             all_day: !!ev.all_day,
             multi_day: isMultiDay,
-            is_first_day: cursor.getTime() === startDay.getTime(),
-            is_last_day: cursor.getTime() === endDay.getTime(),
+            is_first_day: cursorKey === startKey,
+            is_last_day: cursorKey === endKey,
+            source: ev,
           })
         }
         cursor = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() + 1)
@@ -697,8 +717,8 @@ function CalendarWidget({ events, persons, fill, compact, large, onDayClick, dar
 function AddEventModal({ open, prefillDate, editEvent, persons, userId, onClose, onSave, onUpdate, onDelete }) {
   const isEdit = !!editEvent
   const [title, setTitle] = useState("")
-  const [date, setDate] = useState(fmtDate(new Date()))
-  const [endDate, setEndDate] = useState(fmtDate(new Date()))
+  const [date, setDate] = useState(todayKey())
+  const [endDate, setEndDate] = useState(todayKey())
   const [time, setTime] = useState("12:00")
   const [endTime, setEndTime] = useState("13:00")
   const [allDay, setAllDay] = useState(false)
@@ -713,13 +733,11 @@ function AddEventModal({ open, prefillDate, editEvent, persons, userId, onClose,
   useEffect(() => {
     if (!open) return
     if (editEvent) {
-      const start = new Date(editEvent.start_time)
-      const end = new Date(editEvent.end_time)
       setTitle(editEvent.title || "")
-      setDate(fmtDate(start))
-      setEndDate(fmtDate(end))
-      setTime(`${String(start.getHours()).padStart(2, "0")}:${String(start.getMinutes()).padStart(2, "0")}`)
-      setEndTime(`${String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")}`)
+      setDate(dayKey(editEvent.start_time))
+      setEndDate(dayKey(editEvent.end_time || editEvent.start_time))
+      setTime(formatTime(editEvent.start_time) || "12:00")
+      setEndTime(formatTime(editEvent.end_time || editEvent.start_time) || "13:00")
       setAllDay(!!editEvent.all_day)
       const matchedPerson = persons.findIndex(p => p.user_id === editEvent.created_by)
       setPersonIdx(matchedPerson >= 0 ? matchedPerson : 0)
@@ -730,7 +748,7 @@ function AddEventModal({ open, prefillDate, editEvent, persons, userId, onClose,
       setRecurUntil(editEvent.recurrence_rule?.until || "")
     } else {
       setTitle("")
-      const startDate = prefillDate ? fmtDate(prefillDate) : fmtDate(new Date())
+      const startDate = prefillDate ? fmtDate(prefillDate) : todayKey()
       setDate(startDate)
       setEndDate(startDate)
       setTime("12:00")
@@ -753,12 +771,15 @@ function AddEventModal({ open, prefillDate, editEvent, persons, userId, onClose,
     const recurrence_rule = recurrence
       ? (recurUntil ? { freq: recurrence, until: recurUntil } : { freq: recurrence })
       : null
-    // För all-day: använd start kl 00:00 och end kl 23:59:59 (på respektive datum)
+    // Fälten innehåller svensk lokaltid. toISO() gör om dem till äkta UTC-instanser
+    // innan de går till databasen — skickar vi in en tidszonslös sträng tolkar
+    // Postgres den som UTC och tiden hamnar två timmar fel på sommaren.
+    // För all-day: start kl 00:00 och end kl 23:59:59 (på respektive datum).
     const effectiveEndDate = endDate < date ? date : endDate // skydda mot end < start
-    const startTimestamp = allDay ? `${date}T00:00:00` : `${date}T${time}:00`
+    const startTimestamp = allDay ? toISO(date, "00:00") : toISO(date, time)
     const endTimestamp = allDay
-      ? `${effectiveEndDate}T23:59:59`
-      : `${effectiveEndDate}T${endTime}:00`
+      ? toISO(effectiveEndDate, "23:59", 59)
+      : toISO(effectiveEndDate, endTime)
     const payload = {
       title: title.trim(),
       start_time: startTimestamp,
@@ -937,7 +958,7 @@ function ActivityFeed({ activity, persons, members, userId, max = 5 }) {
     if (diff < 3600) return `${Math.floor(diff / 60)}m sen`
     if (diff < 86400) return `${Math.floor(diff / 3600)}h sen`
     if (diff < 604800) return `${Math.floor(diff / 86400)}d sen`
-    return new Date(iso).toLocaleDateString("sv-SE", { day: "numeric", month: "short" })
+    return formatDate(iso, { day: "numeric", month: "short" })
   }
   function getName(itemUserId) {
     if (itemUserId === userId) return "Du"
@@ -1094,8 +1115,8 @@ function CountdownsTab({ isMobile, countdowns, onAdd, onDelete, onTogglePin }) {
   const [emoji, setEmoji] = useState("")
   const [color, setColor] = useState(LIST_COLORS[0])
 
-  const today = new Date()
-  const todayStr = fmtDate(today)
+  const todayStr = todayKey()
+  const today = keyToDate(todayStr)
   const upcoming = countdowns.filter(c => c.target_date >= todayStr).sort((a, b) => a.target_date.localeCompare(b.target_date))
   const past = countdowns.filter(c => c.target_date < todayStr).sort((a, b) => b.target_date.localeCompare(a.target_date))
 
@@ -1230,8 +1251,8 @@ function CountdownsCard({ countdowns, onAdd, onDelete }) {
   const [color, setColor] = useState(ACCENT.calendar)
 
   // Filtrera bort passerade (mer än 1 dag sen)
-  const today = new Date()
-  const todayStr = fmtDate(today)
+  const todayStr = todayKey()
+  const today = keyToDate(todayStr)
   const upcoming = countdowns.filter(c => c.target_date >= todayStr).slice(0, 5)
 
   function daysUntil(dateStr) {
@@ -1377,7 +1398,7 @@ function NotificationBell({ activity, persons, members, userId, onOpenFeed }) {
     if (diff < 3600) return `${Math.floor(diff / 60)}m sen`
     if (diff < 86400) return `${Math.floor(diff / 3600)}h sen`
     if (diff < 604800) return `${Math.floor(diff / 86400)}d sen`
-    return new Date(iso).toLocaleDateString("sv-SE", { day: "numeric", month: "short" })
+    return formatDate(iso, { day: "numeric", month: "short" })
   }
 
   return (
@@ -1458,16 +1479,13 @@ function NotificationBell({ activity, persons, members, userId, onOpenFeed }) {
 // Modal som visar alla händelser för en specifik dag, med möjlighet att lägga till ny.
 function DayModal({ open, date, events, persons, onClose, onAddEvent, onEditEvent, onDeleteEvent, userId }) {
   if (!open || !date) return null
-  const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate())
-  const dayEnd = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59)
+  const key = fmtDate(date)
+  const { from: dayStart, to: dayEnd } = dayBounds(key)
   const dayEvents = expandEvents(events, dayStart, dayEnd).sort((a, b) =>
     new Date(a.start_time) - new Date(b.start_time)
   )
-  const dateStr = date.toLocaleDateString("sv-SE", { weekday: "long", day: "numeric", month: "long" })
-  const isToday = (() => {
-    const now = new Date()
-    return now.getFullYear() === date.getFullYear() && now.getMonth() === date.getMonth() && now.getDate() === date.getDate()
-  })()
+  const dateStr = formatDate(dayStart, { weekday: "long", day: "numeric", month: "long" })
+  const isToday = key === todayKey()
 
   function handleDelete(ev) {
     const isRecurring = !!ev.master_id || !!ev.recurrence_rule
@@ -1517,8 +1535,9 @@ function DayModal({ open, date, events, persons, onClose, onAddEvent, onEditEven
                     <div style={{ width: 4, height: 36, borderRadius: 2, background: p.color, flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0, cursor: isOwner && onEditEvent ? "pointer" : "default" }} onClick={() => isOwner && onEditEvent && onEditEvent(ev)}>
                       <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 12, color: t.textMuted, display: "flex", alignItems: "center", gap: 4 }}>
-                        {fmtTime(ev.start_time)}
-                        {ev.end_time && ev.end_time !== ev.start_time && ` – ${fmtTime(ev.end_time)}`}
+                        {eventTime(ev)}
+                        {!ev.all_day && ev.end_time && ev.end_time !== ev.start_time && ` – ${eventTime(ev, "end_time")}`}
+                        {ev.all_day && <span style={{ fontSize: 10 }}>Heldag</span>}
                         {isRecurring && <Repeat size={10} color={t.textMuted} />}
                         {ev.reminder_minutes != null && <span title="Påminnelse satt" style={{ fontSize: 10 }}>🔔</span>}
                         {!isOwner && <span title="Skapad av annan medlem" style={{ fontSize: 9, color: t.textMuted }}>· {p.name}</span>}
@@ -1594,7 +1613,7 @@ function HomeCalendar({ events, persons, onDayClick, isMobile }) {
 // Vecko-vy: 7 dagar i rad med events listade per dag
 function WeekCalendarView({ events, persons, onDayClick }) {
   const [weekOffset, setWeekOffset] = useState(0) // 0 = denna vecka, +1 = nästa, -1 = förra
-  const today = new Date()
+  const today = keyToDate(todayKey())
   // Måndag denna vecka
   const dayOfWeek = today.getDay() === 0 ? 7 : today.getDay()
   const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - dayOfWeek + 1 + weekOffset * 7)
@@ -1602,8 +1621,10 @@ function WeekCalendarView({ events, persons, onDayClick }) {
     const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i)
     return d
   })
-  const weekStart = days[0]
-  const weekEnd = new Date(days[6].getFullYear(), days[6].getMonth(), days[6].getDate(), 23, 59, 59)
+  // Fönstret sätts på svenska dygnsgränser, inte enhetens, så ett event 00:30
+  // natten till måndag inte hamnar utanför veckan på en UTC-ställd skärm.
+  const weekStart = dayBounds(fmtDate(days[0])).from
+  const weekEnd = dayBounds(fmtDate(days[6])).to
   const expandedEvents = useMemo(
     () => expandEvents(events, weekStart, weekEnd).sort((a, b) => new Date(a.start_time) - new Date(b.start_time)),
     [events, weekStart.getTime(), weekEnd.getTime()]
@@ -1611,8 +1632,7 @@ function WeekCalendarView({ events, persons, onDayClick }) {
   const eventsByDay = useMemo(() => {
     const map = {}
     expandedEvents.forEach(ev => {
-      const d = new Date(ev.start_time)
-      const key = fmtDate(d)
+      const key = dayKey(ev.start_time)
       if (!map[key]) map[key] = []
       map[key].push(ev)
     })
@@ -1620,8 +1640,9 @@ function WeekCalendarView({ events, persons, onDayClick }) {
   }, [expandedEvents])
 
   const weekNum = (() => {
-    // ISO veckonummer
-    const d = new Date(Date.UTC(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate()))
+    // ISO veckonummer — räknas på måndagens datum, inte på instansen weekStart
+    const mon = days[0]
+    const d = new Date(Date.UTC(mon.getFullYear(), mon.getMonth(), mon.getDate()))
     const dayNum = d.getUTCDay() || 7
     d.setUTCDate(d.getUTCDate() + 4 - dayNum)
     const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
@@ -1700,7 +1721,7 @@ function WeekCalendarView({ events, persons, onDayClick }) {
                         background: `${p.color}08`, border: `1px solid ${p.color}15`,
                       }}>
                         <div style={{ width: 3, height: 22, borderRadius: 2, background: p.color, flexShrink: 0 }} />
-                        <span style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 11, color: t.textMuted, flexShrink: 0 }}>{fmtTime(ev.start_time)}</span>
+                        <span style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 11, color: t.textMuted, flexShrink: 0 }}>{ev.all_day ? "Heldag" : eventTime(ev)}</span>
                         <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, color: t.text, fontWeight: 600, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.title}</span>
                         {isRecurring && <Repeat size={11} color={t.textMuted} style={{ flexShrink: 0 }} />}
                       </div>
@@ -1720,10 +1741,8 @@ function CalendarTab({ isMobile, events, persons, onAddEvent, onDeleteEvent, onO
   const [view, setView] = useState("month") // "month" | "week"
 
   const eventsToday = useMemo(() => {
-    const today = new Date()
-    const dayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
-    const dayEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59)
-    return expandEvents(events, dayStart, dayEnd)
+    const { from, to } = dayBounds(todayKey())
+    return expandEvents(events, from, to)
       .sort((a, b) => new Date(a.start_time) - new Date(b.start_time))
   }, [events])
 
@@ -1788,7 +1807,7 @@ function CalendarTab({ isMobile, events, persons, onAddEvent, onDeleteEvent, onO
                     <div style={{ width: 3, height: 28, borderRadius: 2, background: p.color, flexShrink: 0 }} />
                     <div style={{ flex: 1 }}>
                       <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 11, color: t.textMuted, display: "flex", alignItems: "center", gap: 4 }}>
-                        {fmtTime(ev.start_time)}
+                        {ev.all_day ? "Heldag" : eventTime(ev)}
                         {isRecurring && <Repeat size={10} color={t.textMuted} />}
                       </div>
                       <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, color: t.text, fontWeight: 600 }}>{ev.title}</div>
@@ -4747,8 +4766,8 @@ function renderTvSlotWidget(type, p) {
 
 // Stor kvadratisk countdown-widget för TV-vyn — visar pinned countdown med fokus på siffran
 function TvCountdownCard({ countdowns, dark }) {
-  const today = new Date()
-  const todayStr = fmtDate(today)
+  const todayStr = todayKey()
+  const today = keyToDate(todayStr)
   const upcoming = (countdowns || []).filter(c => c.target_date >= todayStr).sort((a, b) => a.target_date.localeCompare(b.target_date))
   const c = upcoming.find(x => x.pinned) || upcoming[0]
   const txtColor = dark ? "#e8eaf0" : t.text
@@ -4810,9 +4829,10 @@ function TvCountdownCard({ countdowns, dark }) {
 // Lista över dagens & kommande händelser — TV-vänlig
 function TvEventsCard({ events, persons, dark }) {
   const upcoming = useMemo(() => {
-    const now = new Date()
+    // Från och med svensk midnatt idag, inte enhetens midnatt.
+    const from = dayBounds(todayKey()).from
     return events
-      .filter(e => new Date(e.start_time) >= new Date(now.getFullYear(), now.getMonth(), now.getDate()))
+      .filter(e => new Date(e.start_time) >= from)
       .sort((a, b) => new Date(a.start_time) - new Date(b.start_time))
       .slice(0, 6)
   }, [events])
@@ -4826,13 +4846,12 @@ function TvEventsCard({ events, persons, dark }) {
           {upcoming.length === 0 && <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: txtMuted, fontStyle: "italic" }}>Inget inplanerat</span>}
           {upcoming.map(ev => {
             const p = getPersonForEvent(ev, persons)
-            const d = new Date(ev.start_time)
             return (
               <div key={ev.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", background: dark ? `${p.color}25` : `${p.color}08`, borderRadius: 8, border: `1px solid ${p.color}30` }}>
                 <div style={{ width: 3, height: 22, borderRadius: 2, background: p.color, flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 9, color: txtMuted }}>
-                    {d.getDate()} {MONTHS_SHORT[d.getMonth()]} · {fmtTime(ev.start_time)}
+                    {formatDate(ev.start_time, { day: "numeric", month: "short" })}{ev.all_day ? " · Heldag" : ` · ${eventTime(ev)}`}
                   </div>
                   <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: txtColor, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.title}</div>
                 </div>
@@ -5097,7 +5116,7 @@ export default function SmartHub({ session, household }) {
 
   // ── Current week (for meals) ──
   const currentWeekStart = useMemo(() => {
-    const now = new Date()
+    const now = keyToDate(todayKey())
     const day = now.getDay()
     const diff = day === 0 ? 6 : day - 1
     const mon = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diff)
@@ -5535,7 +5554,7 @@ export default function SmartHub({ session, household }) {
       created_by: userId,
     }).select().single()
     if (!error && data) {
-      const dateStr = new Date(ev.start_time).toLocaleDateString("sv-SE", { day: "numeric", month: "short" })
+      const dateStr = formatDate(ev.start_time, { day: "numeric", month: "short" })
       logActivity("add_event", "event", data.id, `lade till "${ev.title}" ${dateStr}${ev.recurrence_rule ? " (återkommande)" : ""}`)
     }
   }
@@ -5871,7 +5890,7 @@ export default function SmartHub({ session, household }) {
             ? (args.recurrence_until ? { freq: args.recurrence, until: args.recurrence_until } : { freq: args.recurrence })
             : null,
         })
-        return { ok: true, message: `Lade till "${args.title}"${args.recurrence ? " (återkommande)" : ""} ${new Date(startIso).toLocaleDateString("sv-SE", { weekday: "long", day: "numeric", month: "long" })} ${fmtTime(startIso)}` }
+        return { ok: true, message: `Lade till "${args.title}"${args.recurrence ? " (återkommande)" : ""} ${formatDate(startIso, { weekday: "long", day: "numeric", month: "long" })} ${formatTime(startIso)}` }
       }
       if (name === "delete_event") {
         const ev = findByName(calEvents, args.title, e => e.title)
@@ -5922,7 +5941,9 @@ export default function SmartHub({ session, household }) {
       foodPrefs,
       persons: persons.map(p => ({ name: p.name, color: p.color })),
     }
-    const today = new Date().toISOString().slice(0, 10)
+    // Svenskt datum, inte UTC — annars tror AI:n att det är gårdagen mellan
+    // midnatt och 02:00 och lägger "imorgon" på fel dygn.
+    const today = todayKey()
     const { data, error } = await supabase.functions.invoke("ai-chat", {
       body: { message, context: ctx, today, previous },
     })
