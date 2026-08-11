@@ -659,6 +659,46 @@ function canEditEvent(ev, userId) {
   if (!ev) return false
   return ev.shared !== false || ev.created_by === userId
 }
+// Markörer i en månadscell på telefonen. En cell är ungefär 50 px bred, så
+// titeltext blir "C…" hur mycket man än petar på typsnittet. Vi gör som en
+// vanlig kalender i stället: prickar för vanliga händelser, band för sådant
+// som sträcker sig över flera dagar. Titlarna läser man i vecko-vyn eller
+// genom att tappa på dagen.
+function MonthDayMarkers({ events, mutedColor }) {
+  const bars = events.filter(ev => ev.all_day || ev.multi_day)
+  const dots = events.filter(ev => !(ev.all_day || ev.multi_day))
+  const MAX_DOTS = 4
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      {bars.slice(0, 2).map(ev => (
+        <div key={ev.id} style={{
+          height: 5, background: ev.color, flexShrink: 0,
+          // Rundat bara i ändarna, så en flerdagshändelse läses som ett band
+          borderRadius: !ev.multi_day || (ev.is_first_day && ev.is_last_day) ? 3
+            : ev.is_first_day ? "3px 0 0 3px"
+            : ev.is_last_day ? "0 3px 3px 0"
+            : 0,
+        }} />
+      ))}
+      {dots.length > 0 && (
+        <div style={{
+          display: "flex", flexWrap: "wrap", justifyContent: "center",
+          alignItems: "center", gap: 3, marginTop: bars.length ? 1 : 0,
+        }}>
+          {dots.slice(0, MAX_DOTS).map(ev => ev.icon
+            ? <span key={ev.id} style={{ fontSize: 11, lineHeight: 1, flexShrink: 0 }}>{ev.icon}</span>
+            : <span key={ev.id} style={{ width: 7, height: 7, borderRadius: 4, background: ev.color, flexShrink: 0 }} />)}
+          {dots.length > MAX_DOTS && (
+            <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 9, fontWeight: 800, color: mutedColor, lineHeight: 1 }}>
+              +{dots.length - MAX_DOTS}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function CalendarWidget({ events, persons, fill, compact, large, onDayClick, dark }) {
   // Dagens datum enligt svensk tid, inte enhetens — annars byter väggskärmen
   // dag vid fel tillfälle om Pi:n står på UTC.
@@ -790,7 +830,9 @@ function CalendarWidget({ events, persons, fill, compact, large, onDayClick, dar
                         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                       }}>{holiday.name}</div>
                     )}
-                    {dayEvents.slice(0, large ? 2 : fill ? 2 : 1).map((ev) => {
+                    {/* Telefonen får prickar, större ytor får chips med text */}
+                    {large && <MonthDayMarkers events={dayEvents} mutedColor={txtMuted} />}
+                    {!large && dayEvents.slice(0, fill ? 2 : 1).map((ev) => {
                       // All-day eller multi-day = "bar"-stil (fylld bakgrund, ingen tid visad)
                       const isBar = ev.all_day || ev.multi_day
                       // Avrundning bara på första/sista dagen för multi-day, så det ser sammanhängande ut
@@ -829,9 +871,9 @@ function CalendarWidget({ events, persons, fill, compact, large, onDayClick, dar
                         </div>
                       )
                     })}
-                    {dayEvents.length > (large ? 2 : fill ? 2 : 1) && (
-                      <div style={{ fontSize: large ? 10 : 6, color: txtMuted, textAlign: "center", fontWeight: 700, marginTop: 1 }}>
-                        +{dayEvents.length - (large ? 2 : fill ? 2 : 1)} fler
+                    {!large && dayEvents.length > (fill ? 2 : 1) && (
+                      <div style={{ fontSize: 6, color: txtMuted, textAlign: "center", fontWeight: 700, marginTop: 1 }}>
+                        +{dayEvents.length - (fill ? 2 : 1)} fler
                       </div>
                     )}
                   </div>
@@ -1845,9 +1887,20 @@ function WeekCalendarView({ events, persons, onDayClick }) {
   const eventsByDay = useMemo(() => {
     const map = {}
     expandedEvents.forEach(ev => {
-      const key = dayKey(ev.start_time)
-      if (!map[key]) map[key] = []
-      map[key].push(ev)
+      // En flerdagshändelse ska synas alla dagar den pågår, inte bara den den
+      // börjar — annars stod det "Inget inplanerat" mitt under Öland-veckan.
+      const startKey = dayKey(ev.start_time)
+      const endKey = dayKey(ev.end_time || ev.start_time)
+      const endCursor = keyToDate(endKey)
+      let cursor = keyToDate(startKey)
+      let safety = 0
+      while (cursor <= endCursor && safety < 366) {
+        safety++
+        const key = fmtDate(cursor)
+        if (!map[key]) map[key] = []
+        map[key].push({ ...ev, _dayKey: key, _isFirstDay: key === startKey, _multiDay: startKey !== endKey })
+        cursor = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() + 1)
+      }
     })
     return map
   }, [expandedEvents])
@@ -1928,7 +1981,7 @@ function WeekCalendarView({ events, persons, onDayClick }) {
                     const p = getPersonForEvent(ev, persons)
                     const isRecurring = !!ev.master_id || !!ev.recurrence_rule
                     return (
-                      <div key={ev.id} style={{
+                      <div key={`${ev.id}_${ev._dayKey}`} style={{
                         display: "flex", alignItems: "center", gap: 8,
                         padding: "5px 10px", borderRadius: 7,
                         background: `${p.color}08`, border: `1px solid ${p.color}15`,
@@ -1936,7 +1989,9 @@ function WeekCalendarView({ events, persons, onDayClick }) {
                         {ev.icon
                           ? <span style={{ fontSize: 15, width: 19, textAlign: "center", flexShrink: 0 }}>{ev.icon}</span>
                           : <div style={{ width: 3, height: 22, borderRadius: 2, background: p.color, flexShrink: 0 }} />}
-                        <span style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 11, color: t.textMuted, flexShrink: 0 }}>{ev.all_day ? "Heldag" : eventTime(ev)}</span>
+                        <span style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 11, color: t.textMuted, flexShrink: 0 }}>
+                          {ev._multiDay && !ev._isFirstDay ? "Pågår" : ev.all_day ? "Heldag" : eventTime(ev)}
+                        </span>
                         <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, color: t.text, fontWeight: 600, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.title}</span>
                         {isRecurring && <Repeat size={11} color={t.textMuted} style={{ flexShrink: 0 }} />}
                       </div>
