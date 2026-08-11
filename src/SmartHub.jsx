@@ -715,6 +715,10 @@ function CalendarWidget({ events, persons, fill, compact, large, onDayClick, dar
                           display: "flex", alignItems: "center", gap: 3,
                         }}>
                           {ev.recurring && <Repeat size={large ? 9 : compact ? 5 : 6} style={{ flexShrink: 0 }} />}
+                          {/* Ikonen utelämnas i den minsta varianten — en emoji på 6px är bara grums */}
+                          {ev.icon && !compact && (!ev.multi_day || ev.is_first_day) && (
+                            <span style={{ flexShrink: 0, fontSize: large ? 11 : 8 }}>{ev.icon}</span>
+                          )}
                           {/* På multi-day visa bara titeln på första dagen, tomt på fortsättnings-celler */}
                           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {ev.multi_day && !ev.is_first_day
@@ -765,6 +769,10 @@ function AddEventModal({ open, prefillDate, editEvent, persons, userId, onClose,
   const [time, setTime] = useState("12:00")
   const [endTime, setEndTime] = useState("13:00")
   const [allDay, setAllDay] = useState(false)
+  const [icon, setIcon] = useState(null)
+  // Så fort användaren rört ikonen slutar vi föreslå — ett manuellt val, även
+  // "ingen ikon", ska aldrig skrivas över av titel-gissningen.
+  const [iconTouched, setIconTouched] = useState(false)
   const [personIdx, setPersonIdx] = useState(0)
   const [shared, setShared] = useState(true)
   const [notify, setNotify] = useState(true)
@@ -782,6 +790,9 @@ function AddEventModal({ open, prefillDate, editEvent, persons, userId, onClose,
       setTime(formatTime(editEvent.start_time) || "12:00")
       setEndTime(formatTime(editEvent.end_time || editEvent.start_time) || "13:00")
       setAllDay(!!editEvent.all_day)
+      setIcon(editEvent.icon || null)
+      // En sparad händelse har redan sitt val gjort, oavsett vad titeln säger.
+      setIconTouched(true)
       const matchedPerson = persons.findIndex(p => p.user_id === editEvent.created_by)
       setPersonIdx(matchedPerson >= 0 ? matchedPerson : 0)
       setShared(editEvent.shared !== false)
@@ -797,6 +808,8 @@ function AddEventModal({ open, prefillDate, editEvent, persons, userId, onClose,
       setTime("12:00")
       setEndTime("13:00")
       setAllDay(false)
+      setIcon(null)
+      setIconTouched(false)
       const myIdx = persons.findIndex(p => p.user_id === userId)
       setPersonIdx(myIdx >= 0 ? myIdx : 0)
       setShared(true)
@@ -806,6 +819,13 @@ function AddEventModal({ open, prefillDate, editEvent, persons, userId, onClose,
       setRecurUntil("")
     }
   }, [open, prefillDate, editEvent, persons, userId])
+
+  // Föreslår en ikon utifrån titeln medan man skriver. Slutar så fort
+  // användaren själv rört ikonväljaren.
+  useEffect(() => {
+    if (!open || iconTouched) return
+    setIcon(suggestIcon(title))
+  }, [title, open, iconTouched])
 
   if (!open) return null
 
@@ -829,7 +849,7 @@ function AddEventModal({ open, prefillDate, editEvent, persons, userId, onClose,
       end_time: endTimestamp,
       all_day: allDay,
       location: editEvent?.location || null,
-      icon: editEvent?.icon ?? null,
+      icon: icon || null,
       color: persons[personIdx]?.color || ACCENT.event,
       shared,
       reminder_minutes: notify && !allDay ? reminderMinutes : null,
@@ -876,6 +896,43 @@ function AddEventModal({ open, prefillDate, editEvent, persons, userId, onClose,
           </button>
         </div>
         <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Vad ska hända?" style={{ ...inputStyle, fontSize: 14 }} autoFocus />
+
+        {/* Ikonväljare — kurerat rutnät plus fritext för egen emoji */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textMuted, fontWeight: 700 }}>IKON</span>
+            {icon && !iconTouched && (
+              <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 10, color: ACCENT.event, fontWeight: 700 }}>· föreslagen</span>
+            )}
+            {icon && (
+              <button onClick={() => { setIcon(null); setIconTouched(true) }} style={{
+                marginLeft: "auto", background: "none", border: "none", cursor: "pointer",
+                fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textMuted, textDecoration: "underline", padding: 0,
+              }}>Ingen ikon</button>
+            )}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 5 }}>
+            {EVENT_ICONS.map(ic => (
+              <button key={ic} onClick={() => { setIcon(icon === ic ? null : ic); setIconTouched(true) }} style={{
+                height: 38, fontSize: 19, cursor: "pointer", borderRadius: 9,
+                background: icon === ic ? `${ACCENT.event}18` : t.inputBg,
+                border: icon === ic ? `2px solid ${ACCENT.event}` : `1px solid ${t.inputBorder}`,
+              }}>{ic}</button>
+            ))}
+          </div>
+          <input
+            value={icon && !EVENT_ICONS.includes(icon) ? icon : ""}
+            onChange={e => {
+              // Emoji kan bestå av flera kodpunkter, så vi klipper på tecken och
+              // inte på .slice(0, 2) som hade delat en emoji mitt itu.
+              const chars = [...e.target.value.trim()]
+              setIcon(chars.length ? chars.slice(0, 3).join("") : null)
+              setIconTouched(true)
+            }}
+            placeholder="…eller klistra in en egen emoji"
+            style={{ ...inputStyle, fontSize: 13 }}
+          />
+        </div>
 
         {/* Heldags-toggle */}
         <div onClick={() => setAllDay(a => !a)} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "4px 0" }}>
@@ -1777,7 +1834,9 @@ function WeekCalendarView({ events, persons, onDayClick }) {
                         padding: "5px 10px", borderRadius: 7,
                         background: `${p.color}08`, border: `1px solid ${p.color}15`,
                       }}>
-                        <div style={{ width: 3, height: 22, borderRadius: 2, background: p.color, flexShrink: 0 }} />
+                        {ev.icon
+                          ? <span style={{ fontSize: 15, width: 19, textAlign: "center", flexShrink: 0 }}>{ev.icon}</span>
+                          : <div style={{ width: 3, height: 22, borderRadius: 2, background: p.color, flexShrink: 0 }} />}
                         <span style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 11, color: t.textMuted, flexShrink: 0 }}>{ev.all_day ? "Heldag" : eventTime(ev)}</span>
                         <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, color: t.text, fontWeight: 600, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.title}</span>
                         {isRecurring && <Repeat size={11} color={t.textMuted} style={{ flexShrink: 0 }} />}
@@ -1861,7 +1920,9 @@ function CalendarTab({ isMobile, events, persons, onAddEvent, onDeleteEvent, onO
                 }
                 return (
                   <div key={ev.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", background: `${p.color}08`, borderRadius: 10, border: `1px solid ${p.color}15` }}>
-                    <div style={{ width: 3, height: 28, borderRadius: 2, background: p.color, flexShrink: 0 }} />
+                    {ev.icon
+                      ? <div style={{ fontSize: 19, width: 23, textAlign: "center", flexShrink: 0 }}>{ev.icon}</div>
+                      : <div style={{ width: 3, height: 28, borderRadius: 2, background: p.color, flexShrink: 0 }} />}
                     <div style={{ flex: 1 }}>
                       <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 11, color: t.textMuted, display: "flex", alignItems: "center", gap: 4 }}>
                         {ev.all_day ? "Heldag" : eventTime(ev)}
@@ -6116,6 +6177,9 @@ export default function SmartHub({ session, household }) {
           start_time: startIso,
           end_time: endIso,
           location: args.location || null,
+          // Samma keyword-lookup som formuläret använder, så AI-skapade
+          // händelser får ikon utan att AI:n behöver veta något om saken.
+          icon: suggestIcon(args.title),
           color: persons[0]?.color || ACCENT.event,
           shared: true,
           recurrence_rule: args.recurrence
