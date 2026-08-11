@@ -2045,11 +2045,17 @@ function CalendarTab({ isMobile, events, persons, onAddEvent, onDeleteEvent, onO
 // ════════════════════════════════════════════════
 //  LISTS
 // ════════════════════════════════════════════════
-function TodoCard({ pinnedList, onToggle, fill, maxHeight, dark }) {
+// hideDone används av väggskärmen. Avbockade rader är bara brus på en skärm
+// som alltid är på och som ingen ändå ångrar sig vid — den ångern sker i
+// mobilen. Raden ligger kvar i databasen, den visas bara inte här.
+function TodoCard({ pinnedList, onToggle, fill, maxHeight, dark, hideDone }) {
   const list = pinnedList || { id: null, name: "Att göra", color: ACCENT.todo, items: [] }
   const items = list.items || []
   const activeItems = items.filter(i => !i.done)
-  const doneItems = items.filter(i => i.done)
+  // doneCount räknas alltid på riktigt — räknaren i rubriken ska visa
+  // framsteget även när raderna inte listas.
+  const doneCount = items.length - activeItems.length
+  const doneItems = hideDone ? [] : items.filter(i => i.done)
   const [showDone, setShowDone] = useState(false)
   const listColor = list.color || ACCENT.todo
   const txtColor = dark ? "#e8eaf0" : t.text
@@ -2064,11 +2070,14 @@ function TodoCard({ pinnedList, onToggle, fill, maxHeight, dark }) {
       <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
           <Label color={listColor} icon={ListChecks}>{list.name}</Label>
-          <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: txtSec }}>{doneItems.length}/{items.length}</span>
+          <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: txtSec }}>{doneCount}/{items.length}</span>
         </div>
         <div style={listContainerStyle}>
           {items.length === 0 && (
             <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: txtMuted, fontStyle: "italic" }}>Inga uppgifter</span>
+          )}
+          {hideDone && items.length > 0 && activeItems.length === 0 && (
+            <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: txtMuted, fontStyle: "italic" }}>Allt avbockat 🎉</span>
           )}
           {activeItems.map(item => (
             <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", flexShrink: 0 }} onClick={() => onToggle(item)}>
@@ -2257,6 +2266,7 @@ function GroceryAutocomplete({ onSubmit, placeholder = "Lägg till vara...", sma
 function ShoppingList({ items, onAdd, onToggle, onDelete, onClearChecked }) {
   const active = items.filter(i => !i.done)
   const done = items.filter(i => i.done)
+  const [showDone, setShowDone] = useState(false)
 
   // Gruppera aktiva på kategori för bättre översikt
   const byCategory = useMemo(() => {
@@ -2318,9 +2328,16 @@ function ShoppingList({ items, onAdd, onToggle, onDelete, onClearChecked }) {
       {done.length > 0 && (
         <Card>
           <div style={{ padding: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 4px 8px" }}>
-              <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, fontWeight: 700, color: t.textMuted, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            {/* Hopfälld som standard — det köpta ska gå att ångra men inte
+                konkurrera med det som fortfarande ska handlas. */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 4px", minHeight: 28 }}>
+              <div onClick={() => setShowDone(s => !s)} style={{
+                display: "flex", alignItems: "center", gap: 4, cursor: "pointer", flex: 1,
+                fontFamily: "Nunito, sans-serif", fontSize: 11, fontWeight: 700, color: t.textMuted,
+                textTransform: "uppercase", letterSpacing: "0.05em",
+              }}>
                 Köpt ({done.length})
+                <ChevronRight size={12} style={{ transform: showDone ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.2s" }} />
               </div>
               {onClearChecked && (
                 <button onClick={onClearChecked} style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "Nunito, sans-serif", fontSize: 11, fontWeight: 700, color: ACCENT.todo, padding: 0 }}>
@@ -2328,7 +2345,7 @@ function ShoppingList({ items, onAdd, onToggle, onDelete, onClearChecked }) {
                 </button>
               )}
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <div style={{ display: showDone ? "flex" : "none", flexDirection: "column", gap: 4, paddingTop: 8 }}>
               {done.map(item => (
                 <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 4px" }}>
                   <div onClick={() => onToggle(item)} style={{
@@ -2445,9 +2462,11 @@ function VirtualKeyboard({ value, onChange, onSubmit, onClose, suggestions = [] 
   )
 }
 
-function ShoppingCard({ items, onToggle, onAdd, fill, dark, virtualKeyboard }) {
+function ShoppingCard({ items, onToggle, onAdd, fill, dark, virtualKeyboard, hideDone }) {
   const active = items.filter(i => !i.done)
-  const done = items.filter(i => i.done)
+  const doneCount = items.length - active.length
+  const done = hideDone ? [] : items.filter(i => i.done)
+  const [showDone, setShowDone] = useState(false)
   const [showQuickAdd, setShowQuickAdd] = useState(false)
   const [vkValue, setVkValue] = useState("")
   const txtColor = dark ? "#e8eaf0" : t.text
@@ -2480,7 +2499,7 @@ function ShoppingCard({ items, onToggle, onAdd, fill, dark, virtualKeyboard }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 8 }}>
           <Label color={ACCENT.todo} icon={ShoppingCart}>Inköp</Label>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: txtSec }}>{done.length}/{items.length}</span>
+            <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: txtSec }}>{doneCount}/{items.length}</span>
             {onAdd && (
               <button onClick={() => setShowQuickAdd(s => !s)} style={{
                 width: 24, height: 24, borderRadius: 12, border: "none",
@@ -2530,17 +2549,35 @@ function ShoppingCard({ items, onToggle, onAdd, fill, dark, virtualKeyboard }) {
               +{active.length - (fill ? 12 : 6)} till
             </span>
           )}
+          {/* Avbockat samlas i en hopfälld sektion i stället för att ligga
+              överstruket i flödet — man ska kunna ångra sig utan att det tar
+              plats från det som faktiskt ska handlas. */}
           {done.length > 0 && (
-            <div style={{ marginTop: 4, paddingTop: 4, opacity: 0.6 }}>
-              {done.slice(0, fill ? 4 : 2).map(item => (
-                <div key={item.id} onClick={() => onToggle(item)} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", padding: "2px 0" }}>
-                  <div style={{
-                    width: 18, height: 18, borderRadius: 5, flexShrink: 0,
-                    background: ACCENT.todo, display: "flex", alignItems: "center", justifyContent: "center",
-                  }}><Check size={11} color="#fff" strokeWidth={3} /></div>
-                  <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, fontWeight: 500, color: txtMuted, textDecoration: "line-through" }}>{item.text}</span>
+            <div style={{ borderTop: `1px solid ${dark ? "rgba(255,255,255,0.08)" : t.line}`, paddingTop: 8, marginTop: 4, flexShrink: 0 }}>
+              <div onClick={() => setShowDone(s => !s)} style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                cursor: "pointer", padding: "2px 0",
+                fontFamily: "Nunito, sans-serif", fontSize: 11, fontWeight: 700, color: txtSec,
+              }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <Check size={11} color={ACCENT.todo} />
+                  Klart ({done.length})
+                </span>
+                <ChevronRight size={11} color={txtMuted} style={{ transform: showDone ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.2s" }} />
+              </div>
+              {showDone && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
+                  {done.map(item => (
+                    <div key={item.id} onClick={() => onToggle(item)} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", flexShrink: 0 }}>
+                      <div style={{
+                        width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+                        background: ACCENT.todo, display: "flex", alignItems: "center", justifyContent: "center",
+                      }}><Check size={11} color="#fff" strokeWidth={3} /></div>
+                      <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, fontWeight: 500, color: txtMuted, textDecoration: "line-through" }}>{item.text}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           )}
         </div>
@@ -5057,8 +5094,8 @@ const LAYOUT_PRESETS = {
 // Standardiserad widget-renderer för TV-slots
 function renderTvSlotWidget(type, p) {
   if (type === "calendar") return <CalendarWidget events={p.calEvents} persons={p.persons} fill onDayClick={p.onDayClick} dark={p.dark} />
-  if (type === "todo")     return <TodoCard pinnedList={p.pinnedList} onToggle={p.onToggleItem} fill dark={p.dark} />
-  if (type === "shopping") return <ShoppingCard items={p.shoppingItems || []} onToggle={p.onToggleShoppingItem} onAdd={p.onAddShoppingItem} fill dark={p.dark} virtualKeyboard />
+  if (type === "todo")     return <TodoCard pinnedList={p.pinnedList} onToggle={p.onToggleItem} fill dark={p.dark} hideDone />
+  if (type === "shopping") return <ShoppingCard items={p.shoppingItems || []} onToggle={p.onToggleShoppingItem} onAdd={p.onAddShoppingItem} fill dark={p.dark} virtualKeyboard hideDone />
   if (type === "meal")     return <MealCard fill mealsByWeekday={p.mealsByWeekday} mealTagsLocal={p.mealTagsLocal} onSetMealText={() => {}} onSetMealTag={() => {}} dark={p.dark} />
   if (type === "events")   return <TvEventsCard events={p.calEvents} persons={p.persons} dark={p.dark} onEventTap={p.onEventTap} />
   if (type === "countdown") return <TvCountdownCard countdowns={p.countdowns} dark={p.dark} />
