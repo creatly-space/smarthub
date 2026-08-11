@@ -68,6 +68,14 @@ export function todayKey() {
   return dayKey(new Date())
 }
 
+// Timmen (0–23) i svensk tid. Används för sådant som styrs av tid på dygnet,
+// t.ex. nattläget på köks-TV:n.
+export function hourInTZ(ts = new Date()) {
+  const d = toDate(ts)
+  if (!d) return 0
+  return Number(getFormatter({ hour: "2-digit", hourCycle: "h23" }).format(d)) % 24
+}
+
 // ── Skriva: svensk lokaltid → instant ──
 
 // Hur många ms svensk tid ligger före UTC vid en given instant (+2h sommar, +1h vinter).

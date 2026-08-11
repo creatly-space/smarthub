@@ -11,7 +11,7 @@ import {
 } from "lucide-react"
 import groceriesData from "./data/groceries.json"
 import {
-  formatTime, formatDate, toISO, dayKey, todayKey,
+  formatTime, formatDate, toISO, dayKey, todayKey, hourInTZ,
   keyToDate, dateToKey as fmtDate, dayBounds,
 } from "./lib/time"
 
@@ -333,6 +333,39 @@ const RECURRENCE_OPTIONS = [
   { id: "monthly",    label: "Varje månad" },
   { id: "yearly",     label: "Varje år" },
 ]
+// ── Event-ikoner ──
+// Medvetet kort, kurerad lista. En full emoji-picker är oanvändbar med fingrar
+// på en vägg, och de här täcker det ett hushåll faktiskt lägger in.
+const EVENT_ICONS = ["🎂", "🏥", "⚽", "🍽️", "✈️", "🎓", "🦷", "💼", "🎉", "🐕", "🚗", "🏊", "🎬", "💊", "🛠️", "📦"]
+// Nyckelord → ikon. Ren objekt-lookup, ingen AI. Första träffen vinner, så
+// ordningen spelar roll: mer specifika ord först.
+const ICON_KEYWORDS = [
+  [["födelsedag", "fodelsedag", "kalas", "birthday", "fyller"], "🎂"],
+  [["tandläkare", "tandlakare", "tandvård", "tandvard"], "🦷"],
+  [["läkare", "lakare", "vårdcentral", "vardcentral", "sjukhus", "doktor", "bvc"], "🏥"],
+  [["vaccin", "medicin", "spruta"], "💊"],
+  [["veterinär", "veterinar", "hund", "valp"], "🐕"],
+  [["träning", "traning", "fotboll", "match", "gym", "innebandy", "hockey"], "⚽"],
+  [["simning", "simhall", "bad"], "🏊"],
+  [["middag", "lunch", "frukost", "restaurang", "brunch"], "🍽️"],
+  [["resa", "flyg", "semester", "charter"], "✈️"],
+  [["bil", "verkstad", "däck", "dack", "besiktning"], "🚗"],
+  [["möte", "mote", "avstämning", "avstamning", "jobb", "apt"], "💼"],
+  [["bio", "film", "teater", "konsert"], "🎬"],
+  [["skola", "skolstart", "examen", "student", "förskola", "forskola"], "🎓"],
+  [["fest", "party"], "🎉"],
+  [["paket", "leverans", "hämta", "hamta"], "📦"],
+  [["renovering", "bygga", "måla", "mala", "fixa"], "🛠️"],
+]
+// Föreslår en ikon utifrån titeln. Anropas bara när användaren inte valt själv.
+function suggestIcon(title) {
+  const q = (title || "").toLowerCase().trim()
+  if (!q) return null
+  for (const [words, icon] of ICON_KEYWORDS) {
+    if (words.some(w => q.includes(w))) return icon
+  }
+  return null
+}
 function recurrenceLabel(rule) {
   if (!rule) return null
   return RECURRENCE_OPTIONS.find(o => o.id === rule.freq)?.label || null
@@ -518,6 +551,14 @@ function getPersonForEvent(ev, persons) {
   if (!persons.length) return { name: "", color: ACCENT.calendar }
   const idx = persons.findIndex(p => p.user_id === ev.created_by)
   return idx >= 0 ? persons[idx] : persons[0]
+}
+// Speglar RLS-policyn på calendar_events exakt: delade händelser får ändras och
+// tas bort av vem som helst i hushållet, privata bara av den som skapade dem.
+// Håll den här i synk med policyn — annars ser UI:t ut att funka medan Supabase
+// tyst returnerar noll uppdaterade rader.
+function canEditEvent(ev, userId) {
+  if (!ev) return false
+  return ev.shared !== false || ev.created_by === userId
 }
 function CalendarWidget({ events, persons, fill, compact, large, onDayClick, dark }) {
   // Dagens datum enligt svensk tid, inte enhetens — annars byter väggskärmen
@@ -716,6 +757,8 @@ function CalendarWidget({ events, persons, fill, compact, large, onDayClick, dar
 // Modal för att skapa ELLER redigera event. Skicka editEvent (objekt) för redigeringsläge.
 function AddEventModal({ open, prefillDate, editEvent, persons, userId, onClose, onSave, onUpdate, onDelete }) {
   const isEdit = !!editEvent
+  // Bara skaparen får ändra delnings-läget — se canEditEvent och RLS-policyn.
+  const canChangeShared = !isEdit || editEvent.created_by === userId
   const [title, setTitle] = useState("")
   const [date, setDate] = useState(todayKey())
   const [endDate, setEndDate] = useState(todayKey())
@@ -786,6 +829,7 @@ function AddEventModal({ open, prefillDate, editEvent, persons, userId, onClose,
       end_time: endTimestamp,
       all_day: allDay,
       location: editEvent?.location || null,
+      icon: editEvent?.icon ?? null,
       color: persons[personIdx]?.color || ACCENT.event,
       shared,
       reminder_minutes: notify && !allDay ? reminderMinutes : null,
@@ -872,7 +916,13 @@ function AddEventModal({ open, prefillDate, editEvent, persons, userId, onClose,
             ))}
           </div>
         )}
-        <div onClick={() => setShared(s => !s)} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "4px 0" }}>
+        {/* Att göra någon annans delade händelse privat skulle nekas av RLS, så
+            växeln är låst när man redigerar något man inte skapat själv. */}
+        <div
+          onClick={() => canChangeShared && setShared(s => !s)}
+          style={{ display: "flex", alignItems: "center", gap: 8, cursor: canChangeShared ? "pointer" : "default", padding: "4px 0", opacity: canChangeShared ? 1 : 0.5 }}
+          title={canChangeShared ? undefined : "Bara den som skapade händelsen kan göra den privat"}
+        >
           <div style={{ width: 36, height: 20, borderRadius: 10, background: shared ? ACCENT.calendar : t.textMuted, padding: 2, display: "flex", alignItems: "center" }}>
             <div style={{ width: 16, height: 16, borderRadius: 8, background: "#fff", transition: "transform 0.2s", transform: shared ? "translateX(16px)" : "translateX(0)" }} />
           </div>
@@ -1489,8 +1539,13 @@ function DayModal({ open, date, events, persons, onClose, onAddEvent, onEditEven
 
   function handleDelete(ev) {
     const isRecurring = !!ev.master_id || !!ev.recurrence_rule
+    const mine = ev.created_by === userId
     if (isRecurring) {
       if (!confirm("Detta är en återkommande händelse. Tar du bort den raderas hela serien. Fortsätta?")) return
+    } else if (!mine) {
+      if (!confirm(`"${ev.title}" är skapad av någon annan i hushållet. Ta bort ändå?`)) return
+    } else if (!confirm(`Ta bort "${ev.title}"?`)) {
+      return
     }
     onDeleteEvent(ev.id)
   }
@@ -1528,12 +1583,14 @@ function DayModal({ open, date, events, persons, onClose, onAddEvent, onEditEven
               {dayEvents.map(ev => {
                 const p = getPersonForEvent(ev, persons)
                 const isRecurring = !!ev.master_id || !!ev.recurrence_rule
-                // Master-id räknas som ägare av instanser av återkommande events
                 const isOwner = ev.created_by === userId
+                const canEdit = canEditEvent(ev, userId)
                 return (
                   <div key={ev.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", background: `${p.color}08`, borderRadius: 10, border: `1px solid ${p.color}15` }}>
-                    <div style={{ width: 4, height: 36, borderRadius: 2, background: p.color, flexShrink: 0 }} />
-                    <div style={{ flex: 1, minWidth: 0, cursor: isOwner && onEditEvent ? "pointer" : "default" }} onClick={() => isOwner && onEditEvent && onEditEvent(ev)}>
+                    {ev.icon
+                      ? <div style={{ fontSize: 22, width: 26, textAlign: "center", flexShrink: 0 }}>{ev.icon}</div>
+                      : <div style={{ width: 4, height: 36, borderRadius: 2, background: p.color, flexShrink: 0 }} />}
+                    <div style={{ flex: 1, minWidth: 0, cursor: canEdit && onEditEvent ? "pointer" : "default" }} onClick={() => canEdit && onEditEvent && onEditEvent(ev)}>
                       <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 12, color: t.textMuted, display: "flex", alignItems: "center", gap: 4 }}>
                         {eventTime(ev)}
                         {!ev.all_day && ev.end_time && ev.end_time !== ev.start_time && ` – ${eventTime(ev, "end_time")}`}
@@ -1545,12 +1602,12 @@ function DayModal({ open, date, events, persons, onClose, onAddEvent, onEditEven
                       <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 14, color: t.text, fontWeight: 600 }}>{ev.title}</div>
                       {ev.location && <div style={{ fontSize: 11, color: t.textMuted, marginTop: 2, display: "flex", alignItems: "center", gap: 3 }}><MapPin size={10} /> {ev.location}</div>}
                     </div>
-                    {isOwner && onEditEvent && (
+                    {canEdit && onEditEvent && (
                       <button onClick={() => onEditEvent(ev)} style={{ background: "none", border: "none", cursor: "pointer", color: t.textMuted, padding: 4 }} title="Redigera">
                         <Edit3 size={16} />
                       </button>
                     )}
-                    {isOwner && (
+                    {canEdit && (
                       <button onClick={() => handleDelete(ev)} style={{ background: "none", border: "none", cursor: "pointer", color: t.textMuted, padding: 4 }} title="Ta bort">
                         <X size={16} />
                       </button>
@@ -4758,7 +4815,7 @@ function renderTvSlotWidget(type, p) {
   if (type === "todo")     return <TodoCard pinnedList={p.pinnedList} onToggle={p.onToggleItem} fill dark={p.dark} />
   if (type === "shopping") return <ShoppingCard items={p.shoppingItems || []} onToggle={p.onToggleShoppingItem} onAdd={p.onAddShoppingItem} fill dark={p.dark} virtualKeyboard />
   if (type === "meal")     return <MealCard fill mealsByWeekday={p.mealsByWeekday} mealTagsLocal={p.mealTagsLocal} onSetMealText={() => {}} onSetMealTag={() => {}} dark={p.dark} />
-  if (type === "events")   return <TvEventsCard events={p.calEvents} persons={p.persons} dark={p.dark} />
+  if (type === "events")   return <TvEventsCard events={p.calEvents} persons={p.persons} dark={p.dark} onEventTap={p.onEventTap} />
   if (type === "countdown") return <TvCountdownCard countdowns={p.countdowns} dark={p.dark} />
   if (type === "empty")    return <div style={{ flex: 1, background: p.dark ? "rgba(255,255,255,0.04)" : t.inputBg, borderRadius: 14, border: `1px dashed ${p.dark ? "rgba(255,255,255,0.1)" : t.cardBorder}` }} />
   return null
@@ -4826,8 +4883,92 @@ function TvCountdownCard({ countdowns, dark }) {
   )
 }
 
+// Snabbredigering på väggskärmen. Medvetet INTE ett formulär — det finns inget
+// tangentbord i köket. Bara det man rimligen vill göra i förbifarten: putta
+// tiden, byta ikon, eller ta bort. Allt annat hänvisas till mobilen.
+function TvEventPopover({ ev, persons, canEdit, onShift, onSetIcon, onDelete, onClose }) {
+  if (!ev) return null
+  const p = getPersonForEvent(ev, persons)
+  const isRecurring = !!ev.master_id || !!ev.recurrence_rule
+  const btn = {
+    border: "none", cursor: "pointer", borderRadius: 12,
+    fontFamily: "Nunito, sans-serif", fontWeight: 800,
+    display: "flex", alignItems: "center", justifyContent: "center",
+  }
+  return (
+    <div onClick={onClose} style={{
+      position: "absolute", inset: 0, zIndex: 60,
+      background: "rgba(0,0,0,0.6)", backdropFilter: "blur(2px)",
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 24,
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: "#171a24", borderRadius: 20, padding: 20,
+        width: "100%", maxWidth: 420,
+        border: "1px solid rgba(255,255,255,0.12)",
+        boxShadow: "0 12px 48px rgba(0,0,0,0.55)",
+        display: "flex", flexDirection: "column", gap: 16,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ fontSize: 30, width: 38, textAlign: "center" }}>{ev.icon || "📅"}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 17, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.title}</div>
+            <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
+              {formatDate(ev.start_time, { weekday: "long", day: "numeric", month: "long" })}
+              {ev.all_day ? " · Heldag" : ` · ${formatTime(ev.start_time)}`}
+              {" · "}{p.name}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ ...btn, background: "rgba(255,255,255,0.1)", color: "#fff", width: 40, height: 40, fontSize: 18 }}>✕</button>
+        </div>
+
+        {!canEdit ? (
+          <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, color: "rgba(255,255,255,0.5)", textAlign: "center", padding: "8px 0" }}>
+            Privat händelse — kan bara ändras av den som skapade den.
+          </div>
+        ) : (
+          <>
+            {isRecurring && (
+              <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: "#fbbf24", background: "rgba(251,191,36,0.12)", padding: "6px 10px", borderRadius: 8, textAlign: "center" }}>
+                Återkommande — ändringen gäller hela serien
+              </div>
+            )}
+            {!ev.all_day && (
+              <div>
+                <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.4)", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>Flytta tid</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <button onClick={() => onShift(-15)} style={{ ...btn, flex: 1, height: 52, background: "rgba(255,255,255,0.1)", color: "#fff", fontSize: 16 }}>−15 min</button>
+                  <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 22, fontWeight: 600, color: "#fff", minWidth: 74, textAlign: "center" }}>{formatTime(ev.start_time)}</div>
+                  <button onClick={() => onShift(15)} style={{ ...btn, flex: 1, height: 52, background: "rgba(255,255,255,0.1)", color: "#fff", fontSize: 16 }}>+15 min</button>
+                </div>
+              </div>
+            )}
+            <div>
+              <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.4)", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>Ikon</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 6 }}>
+                {EVENT_ICONS.map(ic => (
+                  <button key={ic} onClick={() => onSetIcon(ev.icon === ic ? null : ic)} style={{
+                    ...btn, height: 42, fontSize: 21,
+                    background: ev.icon === ic ? `${p.color}44` : "rgba(255,255,255,0.07)",
+                    outline: ev.icon === ic ? `2px solid ${p.color}` : "none",
+                  }}>{ic}</button>
+                ))}
+              </div>
+            </div>
+            <button onClick={onDelete} style={{ ...btn, height: 50, background: "rgba(220,38,38,0.18)", color: "#fca5a5", fontSize: 15, gap: 8 }}>
+              <Trash2 size={17} /> Ta bort
+            </button>
+          </>
+        )}
+        <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 10, color: "rgba(255,255,255,0.28)", textAlign: "center" }}>
+          Byt titel, datum och påminnelser i mobilen
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Lista över dagens & kommande händelser — TV-vänlig
-function TvEventsCard({ events, persons, dark }) {
+function TvEventsCard({ events, persons, dark, onEventTap }) {
   const upcoming = useMemo(() => {
     // Från och med svensk midnatt idag, inte enhetens midnatt.
     const from = dayBounds(todayKey()).from
@@ -4847,8 +4988,19 @@ function TvEventsCard({ events, persons, dark }) {
           {upcoming.map(ev => {
             const p = getPersonForEvent(ev, persons)
             return (
-              <div key={ev.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", background: dark ? `${p.color}25` : `${p.color}08`, borderRadius: 8, border: `1px solid ${p.color}30` }}>
-                <div style={{ width: 3, height: 22, borderRadius: 2, background: p.color, flexShrink: 0 }} />
+              <div
+                key={ev.id}
+                onClick={onEventTap ? () => onEventTap(ev) : undefined}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8, padding: "5px 8px",
+                  background: dark ? `${p.color}25` : `${p.color}08`,
+                  borderRadius: 8, border: `1px solid ${p.color}30`,
+                  cursor: onEventTap ? "pointer" : "default",
+                }}
+              >
+                {ev.icon
+                  ? <div style={{ fontSize: 18, width: 22, textAlign: "center", flexShrink: 0 }}>{ev.icon}</div>
+                  : <div style={{ width: 3, height: 22, borderRadius: 2, background: p.color, flexShrink: 0 }} />}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 9, color: txtMuted }}>
                     {formatDate(ev.start_time, { day: "numeric", month: "short" })}{ev.all_day ? " · Heldag" : ` · ${eventTime(ev)}`}
@@ -4913,10 +5065,19 @@ function TvLayoutGrid({ layoutKey, slots, widgetProps, slotOverlay }) {
   )
 }
 
-function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, weather, slots, slotOverlay, onDayClick, photoUrl, countdowns, shoppingItems, onAddShoppingItem, onToggleShoppingItem, dark }) {
+function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, weather, slots, slotOverlay, onDayClick, photoUrl, countdowns, shoppingItems, onAddShoppingItem, onToggleShoppingItem, dark, userId, onQuickEditEvent, onDeleteEvent }) {
   const s = { ...DEFAULT_TV_SLOTS, ...(slots || {}) }
   const layoutKey = s.layout || "standard"
-  const widgetProps = { persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, onDayClick, countdowns, shoppingItems, onAddShoppingItem, onToggleShoppingItem, dark }
+  // Popovern håller bara id:t och slår upp eventet i calEvents, så att den
+  // uppdaterar sig själv när ändringen kommit tillbaka via realtime.
+  const [popoverId, setPopoverId] = useState(null)
+  const popoverEvent = popoverId ? calEvents.find(e => e.id === popoverId) : null
+  const canEditPopover = canEditEvent(popoverEvent, userId)
+  const widgetProps = {
+    persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal,
+    onDayClick, countdowns, shoppingItems, onAddShoppingItem, onToggleShoppingItem, dark,
+    onEventTap: onQuickEditEvent ? (ev => setPopoverId(ev.id)) : undefined,
+  }
 
   // Färgsystem för dark mode på TV
   const tvBg = dark ? "#0a0b14" : t.bg
@@ -4981,19 +5142,31 @@ function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWe
       <div style={{ position: "relative", zIndex: 1, flex: 1, display: "flex", flexDirection: "column", padding: "0 16px 16px", gap: 10, minHeight: 0 }}>
         <TvLayoutGrid layoutKey={layoutKey} slots={s} widgetProps={widgetProps} slotOverlay={slotOverlay} />
       </div>
+      {/* Popovern ligger inne i TV-containern, inte i en portal, så den ärver zoom:2 */}
+      <TvEventPopover
+        ev={popoverEvent}
+        persons={persons}
+        canEdit={canEditPopover}
+        onShift={min => onQuickEditEvent(popoverEvent, { shiftMinutes: min })}
+        onSetIcon={icon => onQuickEditEvent(popoverEvent, { icon })}
+        onDelete={() => { const id = popoverEvent.id; setPopoverId(null); onDeleteEvent(id) }}
+        onClose={() => setPopoverId(null)}
+      />
     </div>
   )
 }
 
-// Bestämmer om det är "natt" — dimmar TV-skärmen mellan 20:00 och 07:00
+// Bestämmer om det är "natt" — dimmar TV-skärmen mellan 20:00 och 07:00.
+// Timmen läses i svensk tid, inte enhetens: på en UTC-ställd Pi hade skärmen
+// annars slagit om till nattläge klockan 22 och tillbaka klockan 09.
 function useIsNightTime() {
   const [isNight, setIsNight] = useState(() => {
-    const h = new Date().getHours()
+    const h = hourInTZ()
     return h >= 20 || h < 7
   })
   useEffect(() => {
     const i = setInterval(() => {
-      const h = new Date().getHours()
+      const h = hourInTZ()
       setIsNight(h >= 20 || h < 7)
     }, 60000) // kollar varje minut
     return () => clearInterval(i)
@@ -5097,6 +5270,16 @@ export default function SmartHub({ session, household }) {
   const [countdowns, setCountdowns] = useState([])
   const [shoppingItems, setShoppingItems] = useState([])
   const [weather, setWeather] = useState(null)
+
+  // ── Toast: kort återkoppling när en optimistisk ändring rullats tillbaka ──
+  const [toast, setToast] = useState(null)
+  const toastTimer = useRef(null)
+  function showToast(message) {
+    setToast(message)
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    toastTimer.current = setTimeout(() => setToast(null), 4000)
+  }
+  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current) }, [])
 
   // ── v11 stub state (no Supabase persistence yet — see MIGRATIONS.sql) ──
   // ── Event-modal: hanterar både skapa och redigera ──
@@ -5549,6 +5732,7 @@ export default function SmartHub({ session, household }) {
       start_time: ev.start_time, end_time: ev.end_time,
       all_day: ev.all_day || false,
       location: ev.location, color: ev.color, shared: ev.shared,
+      icon: ev.icon || null,
       recurrence_rule: ev.recurrence_rule || null,
       reminder_minutes: ev.reminder_minutes ?? null,
       created_by: userId,
@@ -5558,26 +5742,74 @@ export default function SmartHub({ session, household }) {
       logActivity("add_event", "event", data.id, `lade till "${ev.title}" ${dateStr}${ev.recurrence_rule ? " (återkommande)" : ""}`)
     }
   }
+  // Optimistisk uppdatering: UI:t ändras direkt och rullas tillbaka om skrivningen
+  // nekas. .select() är viktig — utan den går en RLS-blockering igenom som
+  // "success" med noll rader och ändringen ser ut att ha sparats.
   async function handleUpdateEvent(id, updates) {
-    setCalEvents(p => p.map(e => e.id === id ? { ...e, ...updates } : e))
-    const { error } = await supabase.from("calendar_events").update({
+    const realId = typeof id === "string" && id.includes("_occ_") ? id.split("_occ_")[0] : id
+    const before = calEvents.find(e => e.id === realId)
+    setCalEvents(p => p.map(e => e.id === realId ? { ...e, ...updates } : e))
+    const { data, error } = await supabase.from("calendar_events").update({
       title: updates.title,
       start_time: updates.start_time,
       end_time: updates.end_time,
       all_day: updates.all_day || false,
       location: updates.location,
+      icon: updates.icon ?? null,
       color: updates.color,
       shared: updates.shared,
       recurrence_rule: updates.recurrence_rule,
       reminder_minutes: updates.reminder_minutes,
-    }).eq("id", id)
-    if (error) console.error("[handleUpdateEvent]", error)
+    }).eq("id", realId).select()
+    if (error || !data || data.length === 0) {
+      if (before) setCalEvents(p => p.map(e => e.id === realId ? before : e))
+      console.error("[handleUpdateEvent]", error)
+      showToast(error ? "Kunde inte spara ändringen" : "Du får inte ändra den här händelsen")
+      return
+    }
+    setCalEvents(p => p.map(e => e.id === realId ? data[0] : e))
+    logActivity("edit_event", "event", realId, `ändrade "${updates.title}"`)
+  }
+  // Snabbredigering från TV-popovern: putta tiden i 15-minuterssteg eller byt ikon.
+  // Skickar hela raden till handleUpdateEvent så att inget fält nollas på vägen.
+  async function handleQuickEditEvent(ev, changes) {
+    if (!ev) return
+    const realId = ev.master_id || ev.id
+    const master = calEvents.find(e => e.id === realId)
+    if (!master) return
+    let start = master.start_time
+    let end = master.end_time
+    if (changes.shiftMinutes) {
+      const delta = changes.shiftMinutes * 60000
+      start = new Date(new Date(master.start_time).getTime() + delta).toISOString()
+      end = new Date(new Date(master.end_time).getTime() + delta).toISOString()
+    }
+    await handleUpdateEvent(realId, {
+      title: master.title,
+      start_time: start,
+      end_time: end,
+      all_day: master.all_day,
+      location: master.location,
+      icon: changes.icon !== undefined ? changes.icon : master.icon,
+      color: master.color,
+      shared: master.shared,
+      recurrence_rule: master.recurrence_rule,
+      reminder_minutes: master.reminder_minutes,
+    })
   }
   // Om id är från en återkommande instans (innehåller "_occ_"), ta bort hela serien.
   async function handleDeleteEvent(id) {
     const realId = typeof id === "string" && id.includes("_occ_") ? id.split("_occ_")[0] : id
+    const before = calEvents.find(e => e.id === realId)
     setCalEvents(p => p.filter(e => e.id !== realId))
-    await supabase.from("calendar_events").delete().eq("id", realId)
+    const { data, error } = await supabase.from("calendar_events").delete().eq("id", realId).select()
+    if (error || !data || data.length === 0) {
+      if (before) setCalEvents(p => p.some(e => e.id === realId) ? p : [...p, before])
+      console.error("[handleDeleteEvent]", error)
+      showToast(error ? "Kunde inte ta bort händelsen" : "Du får inte ta bort den här händelsen")
+      return
+    }
+    if (before) logActivity("delete_event", "event", realId, `tog bort "${before.title}"`)
   }
   async function handleSetMealText(weekday, text) {
     if (!text) {
@@ -6003,6 +6235,18 @@ export default function SmartHub({ session, household }) {
         onUpdate={handleUpdateEvent}
         onDelete={handleDeleteEvent}
       />
+      {toast && (
+        <div style={{
+          position: "fixed", left: "50%", bottom: 90, transform: "translateX(-50%)",
+          zIndex: 400, maxWidth: "90vw",
+          background: "rgba(20,22,28,0.94)", color: "#fff",
+          padding: "12px 18px", borderRadius: 12,
+          fontFamily: "Nunito, sans-serif", fontSize: 14, fontWeight: 600,
+          boxShadow: "0 6px 24px rgba(0,0,0,0.3)",
+        }}>
+          {toast}
+        </div>
+      )}
     </>
   )
 
@@ -6026,6 +6270,9 @@ export default function SmartHub({ session, household }) {
           onAddShoppingItem={handleAddShoppingItem}
           onToggleShoppingItem={handleToggleShoppingItem}
           onDayClick={openDayModal}
+          userId={userId}
+          onQuickEditEvent={handleQuickEditEvent}
+          onDeleteEvent={handleDeleteEvent}
         />
         {liftedModals}
       </>
