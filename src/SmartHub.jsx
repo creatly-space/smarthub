@@ -2949,7 +2949,9 @@ function ArchiveView({ archivedLists, onRestore, onDeletePermanent }) {
 function MealCard({ fill, mealsByWeekday, mealTagsLocal, onSetMealText, onSetMealTag, dark }) {
   const [editIdx, setEditIdx] = useState(null)
   const [editVal, setEditVal] = useState("")
-  const todayIdx = (new Date().getDay() + 6) % 7
+  // Svensk veckodag, inte enhetens — annars markeras fel dag på väggen sent
+  // på kvällen om Pi:n står på UTC. 0 = måndag.
+  const todayIdx = (keyToDate(todayKey()).getDay() + 6) % 7
   const txtColor = dark ? "#e8eaf0" : t.text
   const txtSec = dark ? "rgba(255,255,255,0.6)" : t.textSec
   const txtMuted = dark ? "rgba(255,255,255,0.35)" : t.textMuted
@@ -2972,7 +2974,11 @@ function MealCard({ fill, mealsByWeekday, mealTagsLocal, onSetMealText, onSetMea
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
           <Label color={ACCENT.meal} icon={UtensilsCrossed}>Matsedel</Label>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", flex: 1, justifyContent: fill ? "space-between" : "flex-start", gap: fill ? 0 : 3 }}>
+        {/* I fill-läge delar de sju dagarna på höjden i stället för att behålla
+            sin naturliga. Tidigare låg de med space-between och naturlig höjd,
+            och när utrymmet inte räckte spillde söndagen ut under kortet och
+            klipptes bort av overflow: hidden — därav "TV:n visar bara mån–lör". */}
+        <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, gap: fill ? 0 : 3 }}>
           {DAYS.map((day, i) => {
             const weekday = i + 1
             const meal = mealsByWeekday[weekday]
@@ -2982,17 +2988,20 @@ function MealCard({ fill, mealsByWeekday, mealTagsLocal, onSetMealText, onSetMea
             const isToday = i === todayIdx
             const isEditing = editIdx === i
             return (
-              <div key={i}>
+              <div key={i} style={fill && !isEditing
+                ? { flex: "1 1 0", minHeight: 0, display: "flex", flexDirection: "column", justifyContent: "center", overflow: "hidden" }
+                : undefined}>
                 <div onClick={() => !isEditing && startEdit(i)} style={{
                   display: "flex", justifyContent: "space-between", alignItems: "center",
-                  padding: fill ? "5px 8px" : "4px 8px",
+                  padding: fill ? "3px 8px" : "4px 8px",
                   background: isEditing ? `${ACCENT.meal}08` : isToday ? `${ACCENT.meal}12` : "transparent",
                   borderRadius: 8, cursor: isEditing ? "default" : "pointer",
+                  minWidth: 0,
                 }}>
                   <span style={{
-                    fontFamily: "Nunito, sans-serif", fontSize: fill ? 13 : 12,
+                    fontFamily: "Nunito, sans-serif", fontSize: fill ? 12 : 12, lineHeight: 1.25,
                     fontWeight: isToday ? 700 : 500, color: isToday ? ACCENT.meal : txtSec,
-                    minWidth: fill ? 60 : 50, flexShrink: 0,
+                    minWidth: fill ? 56 : 50, flexShrink: 0,
                   }}>{day}</span>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, justifyContent: "flex-end", minWidth: 0 }}>
                     {tag && <span style={{
@@ -3011,7 +3020,7 @@ function MealCard({ fill, mealsByWeekday, mealTagsLocal, onSetMealText, onSetMea
                         }} />
                     ) : (
                       <span style={{
-                        fontFamily: "Nunito, sans-serif", fontSize: fill ? 13 : 12,
+                        fontFamily: "Nunito, sans-serif", fontSize: fill ? 12 : 12, lineHeight: 1.25,
                         fontWeight: isToday ? 700 : 500,
                         color: mealText ? txtColor : txtMuted,
                         textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
