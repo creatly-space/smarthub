@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { supabase } from './lib/supabase'
+import { supabase, IS_DEMO } from './lib/supabase'
 import SmartHub from './SmartHub'
 import Login from './components/Login'
 import Onboarding from './components/Onboarding'
 import LogoutButton from './components/LogoutButton'
+import DemoBanner from './components/DemoBanner'
 
 export default function App() {
   const [session, setSession] = useState(null)
@@ -79,7 +80,9 @@ export default function App() {
 
   return (
     <>
-      <LogoutButton />
+      {/* I demoläget är utloggning meningslös — den leder bara till en
+          inloggningsruta som demot inte har något konto till. */}
+      {IS_DEMO ? <DemoBanner /> : <LogoutButton />}
       <SmartHub session={session} household={household} />
     </>
   )
