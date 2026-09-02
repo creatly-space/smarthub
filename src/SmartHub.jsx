@@ -4131,7 +4131,7 @@ function ThemeSection({ onBack, mobileTheme, tvTheme, onSetMobileTheme, onSetTvT
   const groups = [
     {
       title: "Min mobil", icon: "📱",
-      desc: "Gäller bara dig. Carro behåller sitt eget val.",
+      desc: "Gäller bara dig. Övriga i hushållet behåller sina egna val.",
       value: mobileTheme, onChange: onSetMobileTheme,
     },
     {
