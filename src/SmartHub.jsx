@@ -5511,28 +5511,59 @@ function useIsNightTime() {
   return isNight
 }
 
-// Riktig TV-vy (visas på 1080x1920-skärm via zoom:2 på 540x960 logiskt).
+// Riktig TV-vy. Designen är ritad i 540×960 logiska pixlar, alltså 1080×1920
+// efter skalning — men skalan räknas ut från fönstrets faktiska storlek i
+// stället för att hårdkodas till 2.
+//
+// Tidigare stod det zoom: 2 rakt av, vilket förutsatte att ytan var exakt
+// 1080×1920. Är fönstret det minsta lägre — en infobar från Chromium, en
+// panel som inte försvann, en rotation som inte gick igenom — hamnade
+// underkanten utanför skärmen och todo- och matsedelskorten föll bort utan
+// att något såg trasigt ut i koden. Nu fyller vyn den yta som faktiskt finns.
 function TvLayout(props) {
   const isNight = useIsNightTime()
+  const [viewport, setViewport] = useState(() => (
+    typeof window === "undefined"
+      ? { w: 1080, h: 1920 }
+      : { w: window.innerWidth, h: window.innerHeight }
+  ))
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const onResize = () => setViewport({ w: window.innerWidth, h: window.innerHeight })
+    window.addEventListener("resize", onResize)
+    window.addEventListener("orientationchange", onResize)
+    return () => {
+      window.removeEventListener("resize", onResize)
+      window.removeEventListener("orientationchange", onResize)
+    }
+  }, [])
+  // Störst möjliga skala där hela vyn ryms. På en korrekt 1080×1920-skärm blir
+  // det exakt 2, precis som förut.
+  const scale = Math.max(0.1, Math.min(viewport.w / 540, viewport.h / 960))
   return (
     <div style={{
-      width: 540, height: 960,
-      position: "fixed", top: 0, left: 0, overflow: "hidden",
-      zoom: 2, transformOrigin: "top left",
-      transition: "background 0.6s ease",
+      position: "fixed", inset: 0, overflow: "hidden", background: "#000",
+      display: "flex", alignItems: "center", justifyContent: "center",
     }}>
       <style>{"html,body{margin:0!important;padding:0!important;overflow:hidden!important;background:#000!important}"}</style>
-      <TvViewContent {...props} dark={isNight} />
-      {isNight && (
-        <div style={{
-          position: "absolute", top: 12, right: 12, zIndex: 50,
-          background: "rgba(255,255,255,0.08)", borderRadius: 8,
-          padding: "3px 10px", display: "flex", alignItems: "center", gap: 4,
-          color: "rgba(255,255,255,0.7)", fontFamily: "Nunito, sans-serif",
-          fontSize: 10, fontWeight: 700,
-          backdropFilter: "blur(8px)",
-        }}>🌙 Nattläge</div>
-      )}
+      <div style={{
+        width: 540, height: 960,
+        position: "relative", overflow: "hidden",
+        zoom: scale, transformOrigin: "top left",
+        transition: "background 0.6s ease",
+      }}>
+        <TvViewContent {...props} dark={isNight} />
+        {isNight && (
+          <div style={{
+            position: "absolute", top: 12, right: 12, zIndex: 50,
+            background: "rgba(255,255,255,0.08)", borderRadius: 8,
+            padding: "3px 10px", display: "flex", alignItems: "center", gap: 4,
+            color: "rgba(255,255,255,0.7)", fontFamily: "Nunito, sans-serif",
+            fontSize: 10, fontWeight: 700,
+            backdropFilter: "blur(8px)",
+          }}>🌙 Nattläge</div>
+        )}
+      </div>
     </div>
   )
 }
