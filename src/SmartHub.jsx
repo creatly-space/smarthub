@@ -5271,6 +5271,16 @@ const LAYOUT_PRESETS = {
       { flex: 1, slots: [{ key: "main", flex: 1 }] },
     ],
   },
+  banner: {
+    label: "Stor topp + bred botten",
+    description: "Stor widget upptill, en bred under — bra för belöningstavlan",
+    slots: ["main", "bottom"],
+    defaults: { main: "calendar", bottom: "reward" },
+    rows: [
+      { flex: 6, slots: [{ key: "main", flex: 1 }] },
+      { flex: 4, slots: [{ key: "bottom", flex: 1 }] },
+    ],
+  },
   sidebar: {
     label: "Sido-stack",
     description: "Hög vänster, 2 högt höger",
@@ -5323,39 +5333,64 @@ function TvRewardChartCard({ charts, onToggleDay, dark }) {
   const total = chart.total_days || 7
   const allDone = done.size >= total
   const cols = Math.min(total, 7)
+  const GAP = 8
+
+  // Rutorna mäts i stället för att gissas. Widgeten kan ligga i en halv slot
+  // eller över hela bredden, och en tvååring ska kunna träffa rätt i båda —
+  // så ikon, siffra och bock skalar med rutans faktiska storlek.
+  const gridRef = useRef(null)
+  const [tileSize, setTileSize] = useState(0)
+  useLayoutEffect(() => {
+    const el = gridRef.current
+    if (!el || typeof ResizeObserver === "undefined") return
+    const measure = () => setTileSize(Math.max(0, (el.clientWidth - (cols - 1) * GAP) / cols))
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [cols])
+  const iconSize = Math.max(14, tileSize * 0.46)
+  const numSize = Math.max(9, tileSize * 0.17)
+  const checkSize = Math.max(16, tileSize * 0.6)
 
   return (
     <Card dark={dark} accent={allDone ? "#f59e0b" : ACCENT.todo} style={{ flex: 1, minHeight: 0 }}>
-      <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", flex: 1, minHeight: 0, gap: 8 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <Label color={allDone ? "#f59e0b" : ACCENT.todo} icon={Sparkles}>{chart.title}</Label>
-          <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, fontWeight: 800, color: allDone ? "#f59e0b" : txtMuted }}>
-            {done.size}/{total}
-          </span>
+      <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", flex: 1, minHeight: 0, gap: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <div style={{
+            fontFamily: "Comfortaa, sans-serif", fontSize: 20, fontWeight: 700,
+            color: allDone ? "#f59e0b" : ACCENT.todo,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}>{chart.title}</div>
+          <span style={{
+            fontFamily: "Comfortaa, sans-serif", fontSize: 22, fontWeight: 700, flexShrink: 0,
+            color: allDone ? "#f59e0b" : txtMuted,
+          }}>{done.size}/{total}</span>
         </div>
 
-        <div style={{
-          display: "grid", gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap: 6,
-          minWidth: 0,
+        <div ref={gridRef} style={{
+          display: "grid", gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap: GAP,
+          minWidth: 0, alignContent: "start", overflow: "hidden",
         }}>
           {Array.from({ length: total }, (_, i) => {
             const isDone = done.has(i)
             return (
               <button key={i} onClick={() => onToggleDay(chart, i)} style={{
                 position: "relative", aspectRatio: "1", minWidth: 0, padding: 0,
-                border: isDone ? `2px solid ${ACCENT.todo}` : `1.5px solid ${tileBorder}`,
-                borderRadius: 12, cursor: "pointer",
-                background: isDone ? `${ACCENT.todo}22` : tileBg,
+                border: isDone ? `4px solid ${ACCENT.todo}` : `3px solid ${tileBorder}`,
+                borderRadius: Math.max(10, tileSize * 0.22), cursor: "pointer",
+                background: isDone ? `${ACCENT.todo}26` : tileBg,
                 display: "flex", flexDirection: "column",
-                alignItems: "center", justifyContent: "center", gap: 1,
+                alignItems: "center", justifyContent: "center", gap: 0,
                 transition: "background 0.15s, border-color 0.15s",
               }}>
-                <span style={{ fontSize: 22, lineHeight: 1, opacity: isDone ? 0.25 : 1 }}>{chart.day_icon || "⭐"}</span>
+                <span style={{ fontSize: iconSize, lineHeight: 1, opacity: isDone ? 0.22 : 1 }}>{chart.day_icon || "⭐"}</span>
                 {isDone && (
-                  <Check size={26} color={ACCENT.todo} strokeWidth={4} style={{ position: "absolute" }} />
+                  <Check size={checkSize} color={ACCENT.todo} strokeWidth={4} style={{ position: "absolute" }} />
                 )}
                 <span style={{
-                  fontFamily: "Nunito, sans-serif", fontSize: 9, fontWeight: 800,
+                  fontFamily: "Nunito, sans-serif", fontSize: numSize, fontWeight: 800,
+                  lineHeight: 1.3,
                   color: isDone ? ACCENT.todo : txtMuted,
                 }}>{i + 1}</span>
               </button>
@@ -5367,19 +5402,19 @@ function TvRewardChartCard({ charts, onToggleDay, dark }) {
         <div style={{ flex: 1, minHeight: 0 }} />
 
         <div style={{
-          display: "flex", alignItems: "center", gap: 10,
-          padding: "8px 12px", borderRadius: 12, flexShrink: 0,
-          background: allDone ? "rgba(245,158,11,0.16)" : tileBg,
-          border: allDone ? "2px solid #f59e0b" : `1px solid ${tileBorder}`,
-          opacity: allDone ? 1 : 0.6,
+          display: "flex", alignItems: "center", gap: 14,
+          padding: "12px 16px", borderRadius: 16, flexShrink: 0,
+          background: allDone ? "rgba(245,158,11,0.18)" : tileBg,
+          border: allDone ? "3px solid #f59e0b" : `2px solid ${tileBorder}`,
+          opacity: allDone ? 1 : 0.65,
         }}>
-          <span style={{ fontSize: 26, lineHeight: 1 }}>{chart.reward_icon || "🎁"}</span>
+          <span style={{ fontSize: 38, lineHeight: 1 }}>{chart.reward_icon || "🎁"}</span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
-              fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 800, color: txtColor,
+              fontFamily: "Nunito, sans-serif", fontSize: 18, fontWeight: 800, color: txtColor,
               overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
             }}>{chart.reward_text || "Belöning"}</div>
-            <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 10, color: allDone ? "#f59e0b" : txtMuted, fontWeight: 700 }}>
+            <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 14, color: allDone ? "#f59e0b" : txtMuted, fontWeight: 700 }}>
               {allDone ? "Klart! 🎉" : `${total - done.size} kvar`}
             </div>
           </div>

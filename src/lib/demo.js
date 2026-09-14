@@ -112,7 +112,7 @@ function buildStore() {
       { id: newId(), household_id: DEMO_HH, user_id: DEMO_MATE, action: "add_todo", entity: "todo", entity_id: null, text: 'lade till "Ringa elektrikern"', created_at: at(-1, "09:00") },
     ],
     tv_layouts: [
-      { household_id: DEMO_HH, widgets: null, photo_url: null, slots: { layout: "standard", main: "calendar", bottomLeft: "reward", bottomRight: "meal" }, updated_at: at(-5, "10:00") },
+      { household_id: DEMO_HH, widgets: null, photo_url: null, slots: { layout: "banner", main: "calendar", bottom: "reward" }, updated_at: at(-5, "10:00") },
     ],
     layouts: [],
     food_preferences: [],
