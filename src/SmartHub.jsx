@@ -4163,11 +4163,140 @@ function ThemeSection({ onBack, mobileTheme, tvTheme, onSetMobileTheme, onSetTvT
   )
 }
 
-function SettingsTab({ isMobile, session, household, members, foodPrefs, setFoodPrefs, onCreateInvite, tvData, tvSlots, onSaveTvSlots, tvPhotoUrl, onSaveTvPhoto, onUploadTvPhoto, userId, themeColor, setThemeColor, displayName, onSaveDisplayName, pushStatus, onEnablePush, onDisablePush, mobileTheme, tvTheme, onSetMobileTheme, onSetTvTheme }) {
+// Ikoner som passar det en belöningstavla brukar handla om.
+const REWARD_DAY_ICONS = ["⭐", "🍼", "🪥", "🚽", "🛏️", "🥦", "📚", "🧦", "🧹", "⚽", "🎵", "😊"]
+const REWARD_PRIZE_ICONS = ["🎁", "🍦", "🎬", "🧸", "🍕", "🎡", "🏊", "🪁"]
+
+function RewardChartsSection({ onBack, charts, onAdd, onDelete, onPin, onReset }) {
+  const [showAdd, setShowAdd] = useState(charts.length === 0)
+  const [title, setTitle] = useState("")
+  const [dayIcon, setDayIcon] = useState("⭐")
+  const [days, setDays] = useState(7)
+  const [rewardText, setRewardText] = useState("")
+  const [rewardIcon, setRewardIcon] = useState("🎁")
+
+  function submit() {
+    if (!title.trim()) return
+    onAdd({
+      title: title.trim(),
+      day_icon: dayIcon,
+      total_days: Math.min(31, Math.max(1, Number(days) || 7)),
+      reward_text: rewardText.trim() || null,
+      reward_icon: rewardIcon,
+    })
+    setTitle(""); setRewardText(""); setDays(7); setDayIcon("⭐"); setRewardIcon("🎁")
+    setShowAdd(false)
+  }
+
+  const iconGrid = (list, value, onPick) => (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 5 }}>
+      {list.map(ic => (
+        <button key={ic} onClick={() => onPick(ic)} style={{
+          height: 38, fontSize: 19, cursor: "pointer", borderRadius: 9,
+          background: value === ic ? `${ACCENT.todo}18` : t.inputBg,
+          border: value === ic ? `2px solid ${ACCENT.todo}` : `1px solid ${t.inputBorder}`,
+        }}>{ic}</button>
+      ))}
+    </div>
+  )
+
+  return (
+    <div>
+      <SectionHeader title="Belöningstavlor" onBack={onBack} />
+
+      {charts.map(c => {
+        const done = (c.completed_days || []).length
+        const total = c.total_days || 7
+        const allDone = done >= total
+        return (
+          <Card key={c.id} style={{ marginBottom: 10 }} accent={allDone ? "#f59e0b" : ACCENT.todo}>
+            <div style={{ padding: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 24 }}>{c.day_icon || "⭐"}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 14, fontWeight: 800, color: t.text }}>{c.title}</div>
+                  <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textSec }}>
+                    {done} av {total} klara{allDone ? " · 🎉" : ""}{c.pinned ? " · visas på TV:n" : ""}
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 3, marginTop: 10 }}>
+                {Array.from({ length: total }, (_, i) => (
+                  <div key={i} style={{
+                    flex: 1, height: 7, borderRadius: 4,
+                    background: (c.completed_days || []).includes(i) ? ACCENT.todo : t.inputBg,
+                    border: `1px solid ${t.inputBorder}`,
+                  }} />
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 6, marginTop: 12, flexWrap: "wrap" }}>
+                {!c.pinned && (
+                  <Btn small outline color={ACCENT.calendar} onClick={() => onPin(c.id)}>
+                    <Monitor size={12} /> Visa på TV
+                  </Btn>
+                )}
+                <Btn small outline onClick={() => { if (confirm(`Nollställa "${c.title}"?`)) onReset(c.id) }}>
+                  Nollställ
+                </Btn>
+                <Btn small outline color="#dc2626" onClick={() => { if (confirm(`Ta bort "${c.title}"?`)) onDelete(c.id) }}>
+                  <Trash2 size={12} /> Ta bort
+                </Btn>
+              </div>
+            </div>
+          </Card>
+        )
+      })}
+
+      {!showAdd ? (
+        <Btn color={ACCENT.todo} onClick={() => setShowAdd(true)} style={{ width: "100%", justifyContent: "center", padding: "12px 14px" }}>
+          <Plus size={14} /> Ny tavla
+        </Btn>
+      ) : (
+        <Card>
+          <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 15, fontWeight: 700, color: t.text }}>Ny tavla</div>
+
+            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Vad ska tränas? T.ex. Sova utan napp" style={{ ...inputStyle, fontSize: 14 }} autoFocus />
+
+            <div>
+              <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, fontWeight: 700, color: t.textMuted, marginBottom: 6 }}>IKON PÅ VARJE DAG</div>
+              {iconGrid(REWARD_DAY_ICONS, dayIcon, setDayIcon)}
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 700, color: t.textSec, flex: 1 }}>Antal dagar</span>
+              <button onClick={() => setDays(d => Math.max(1, Number(d) - 1))} style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${t.inputBorder}`, background: t.inputBg, cursor: "pointer", fontSize: 18, fontWeight: 800, color: t.text }}>−</button>
+              <input type="number" min={1} max={31} value={days} onChange={e => setDays(e.target.value)} style={{ ...inputStyle, width: 64, textAlign: "center", fontSize: 15, fontWeight: 800 }} />
+              <button onClick={() => setDays(d => Math.min(31, Number(d) + 1))} style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${t.inputBorder}`, background: t.inputBg, cursor: "pointer", fontSize: 18, fontWeight: 800, color: t.text }}>+</button>
+            </div>
+
+            <input value={rewardText} onChange={e => setRewardText(e.target.value)} placeholder="Belöning, t.ex. Glass i parken" style={{ ...inputStyle, fontSize: 14 }} />
+            <div>
+              <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, fontWeight: 700, color: t.textMuted, marginBottom: 6 }}>IKON PÅ BELÖNINGEN</div>
+              {iconGrid(REWARD_PRIZE_ICONS, rewardIcon, setRewardIcon)}
+            </div>
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <Btn outline onClick={() => setShowAdd(false)}>Avbryt</Btn>
+              <Btn color={ACCENT.todo} onClick={submit}>Skapa</Btn>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      <p style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textMuted, margin: "12px 4px 0" }}>
+        Tavlan som är markerad "visas på TV:n" hamnar i belöningstavle-widgeten. Lägg den i TV-editorn.
+      </p>
+    </div>
+  )
+}
+
+function SettingsTab({ isMobile, session, household, members, foodPrefs, setFoodPrefs, onCreateInvite, tvData, tvSlots, onSaveTvSlots, tvPhotoUrl, onSaveTvPhoto, onUploadTvPhoto, userId, themeColor, setThemeColor, displayName, onSaveDisplayName, pushStatus, onEnablePush, onDisablePush, mobileTheme, tvTheme, onSetMobileTheme, onSetTvTheme, rewardCharts, onAddRewardChart, onDeleteRewardChart, onPinRewardChart, onResetRewardChart }) {
   const [activeSection, setActiveSection] = useState(null)
   const sections = [
     { id: "profile", icon: User, label: "Profil", desc: "Namn, profilbild" },
     { id: "theme", icon: Sparkles, label: "Färgtema", desc: "Tema för mobilen och köks-TV:n" },
+    { id: "reward", icon: Check, label: "Belöningstavlor", desc: "Dagar att bocka av på TV:n" },
     { id: "tv", icon: Monitor, label: "TV-editor", desc: "Anpassa TV-vyn, widgets & layout" },
     { id: "household", icon: Users, label: "Hushåll & Medlemmar", desc: "Invite-kod, medlemmar" },
     { id: "food", icon: UtensilsCrossed, label: "Matpreferenser", desc: "Gillar, gillar inte, budget" },
@@ -4176,6 +4305,7 @@ function SettingsTab({ isMobile, session, household, members, foodPrefs, setFood
   if (activeSection === "tv") return <TvEditorSection onBack={() => setActiveSection(null)} isMobile={isMobile} tvData={tvData} tvSlots={tvSlots} onSaveTvSlots={onSaveTvSlots} tvPhotoUrl={tvPhotoUrl} onSaveTvPhoto={onSaveTvPhoto} onUploadTvPhoto={onUploadTvPhoto} />
   if (activeSection === "profile") return <ProfileSection onBack={() => setActiveSection(null)} session={session} themeColor={themeColor} setThemeColor={setThemeColor} displayName={displayName} onSaveDisplayName={onSaveDisplayName} pushStatus={pushStatus} onEnablePush={onEnablePush} onDisablePush={onDisablePush} />
   if (activeSection === "theme") return <ThemeSection onBack={() => setActiveSection(null)} mobileTheme={mobileTheme} tvTheme={tvTheme} onSetMobileTheme={onSetMobileTheme} onSetTvTheme={onSetTvTheme} />
+  if (activeSection === "reward") return <RewardChartsSection onBack={() => setActiveSection(null)} charts={rewardCharts || []} onAdd={onAddRewardChart} onDelete={onDeleteRewardChart} onPin={onPinRewardChart} onReset={onResetRewardChart} />
   if (activeSection === "household") return <HouseholdSection onBack={() => setActiveSection(null)} household={household} members={members} userId={userId} onCreateInvite={onCreateInvite} />
   if (activeSection === "food") return <FoodPrefsSection onBack={() => setActiveSection(null)} foodPrefs={foodPrefs} setFoodPrefs={setFoodPrefs} />
   if (activeSection === "account") return <AccountSection onBack={() => setActiveSection(null)} />
@@ -4852,6 +4982,7 @@ function TabContent({
   tvPhotoUrl, onSaveTvPhoto, onUploadTvPhoto,
   themeColor, setThemeColor,
   mobileTheme, tvTheme, onSetMobileTheme, onSetTvTheme,
+  rewardCharts, onAddRewardChart, onDeleteRewardChart, onPinRewardChart, onResetRewardChart,
   displayName, onSaveDisplayName,
   pushStatus, onEnablePush, onDisablePush,
   // activity + countdowns + meal history
@@ -4982,6 +5113,9 @@ function TabContent({
         themeColor={themeColor} setThemeColor={setThemeColor}
         mobileTheme={mobileTheme} tvTheme={tvTheme}
         onSetMobileTheme={onSetMobileTheme} onSetTvTheme={onSetTvTheme}
+        rewardCharts={rewardCharts}
+        onAddRewardChart={onAddRewardChart} onDeleteRewardChart={onDeleteRewardChart}
+        onPinRewardChart={onPinRewardChart} onResetRewardChart={onResetRewardChart}
         displayName={displayName} onSaveDisplayName={onSaveDisplayName}
         pushStatus={pushStatus} onEnablePush={onEnablePush} onDisablePush={onDisablePush} />
     </div>
@@ -5077,6 +5211,7 @@ function getTvSlotOptions() {
     { id: "meal",      label: "Matsedel", color: ACCENT.meal,     icon: UtensilsCrossed },
     { id: "events",    label: "Dagens händelser", color: ACCENT.event, icon: CalendarDays },
     { id: "countdown", label: "Nedräkning", color: "#db2777", icon: Sparkles },
+    { id: "reward",    label: "Belöningstavla", color: ACCENT.todo, icon: Check },
     { id: "empty",     label: "Tom",      color: t.textMuted,     icon: X },
   ]
 }
@@ -5154,8 +5289,104 @@ function renderTvSlotWidget(type, p) {
   if (type === "meal")     return <MealCard fill mealsByWeekday={p.mealsByWeekday} mealTagsLocal={p.mealTagsLocal} onSetMealText={() => {}} onSetMealTag={() => {}} dark={p.dark} />
   if (type === "events")   return <TvEventsCard events={p.calEvents} persons={p.persons} dark={p.dark} onEventTap={p.onEventTap} />
   if (type === "countdown") return <TvCountdownCard countdowns={p.countdowns} dark={p.dark} />
+  if (type === "reward")   return <TvRewardChartCard charts={p.rewardCharts} onToggleDay={p.onToggleRewardDay} dark={p.dark} />
   if (type === "empty")    return <div style={{ flex: 1, background: p.dark ? "rgba(255,255,255,0.04)" : t.inputBg, borderRadius: 14, border: `1px dashed ${p.dark ? "rgba(255,255,255,0.1)" : t.cardBorder}` }} />
   return null
+}
+
+// Belöningstavla för väggskärmen. Barnet trycker själv på en dag när den är
+// klar, och belöningen längst ner tänds när alla dagar är ifyllda. Ett tryck
+// till ångrar — små fingrar träffar fel, och då ska det inte behöva bli en
+// sak att be en vuxen om hjälp med.
+function TvRewardChartCard({ charts, onToggleDay, dark }) {
+  const list = charts || []
+  const chart = list.find(c => c.pinned) || list[0]
+  const txtColor = dark ? "#e8eaf0" : t.text
+  const txtMuted = dark ? "rgba(255,255,255,0.45)" : t.textMuted
+  const tileBg = dark ? "rgba(255,255,255,0.07)" : t.inputBg
+  const tileBorder = dark ? "rgba(255,255,255,0.10)" : t.inputBorder
+
+  if (!chart) {
+    return (
+      <Card dark={dark} accent={ACCENT.todo} style={{ flex: 1, minHeight: 0 }}>
+        <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+          <Label color={ACCENT.todo} icon={Sparkles}>Belöningstavla</Label>
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Nunito, sans-serif", fontSize: 12, color: txtMuted, fontStyle: "italic" }}>
+            Skapa en tavla i mobilen
+          </div>
+        </div>
+      </Card>
+    )
+  }
+
+  const done = new Set(chart.completed_days || [])
+  const total = chart.total_days || 7
+  const allDone = done.size >= total
+  const cols = Math.min(total, 7)
+
+  return (
+    <Card dark={dark} accent={allDone ? "#f59e0b" : ACCENT.todo} style={{ flex: 1, minHeight: 0 }}>
+      <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", flex: 1, minHeight: 0, gap: 8 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <Label color={allDone ? "#f59e0b" : ACCENT.todo} icon={Sparkles}>{chart.title}</Label>
+          <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, fontWeight: 800, color: allDone ? "#f59e0b" : txtMuted }}>
+            {done.size}/{total}
+          </span>
+        </div>
+
+        <div style={{
+          display: "grid", gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap: 6,
+          minWidth: 0,
+        }}>
+          {Array.from({ length: total }, (_, i) => {
+            const isDone = done.has(i)
+            return (
+              <button key={i} onClick={() => onToggleDay(chart, i)} style={{
+                position: "relative", aspectRatio: "1", minWidth: 0, padding: 0,
+                border: isDone ? `2px solid ${ACCENT.todo}` : `1.5px solid ${tileBorder}`,
+                borderRadius: 12, cursor: "pointer",
+                background: isDone ? `${ACCENT.todo}22` : tileBg,
+                display: "flex", flexDirection: "column",
+                alignItems: "center", justifyContent: "center", gap: 1,
+                transition: "background 0.15s, border-color 0.15s",
+              }}>
+                <span style={{ fontSize: 22, lineHeight: 1, opacity: isDone ? 0.25 : 1 }}>{chart.day_icon || "⭐"}</span>
+                {isDone && (
+                  <Check size={26} color={ACCENT.todo} strokeWidth={4} style={{ position: "absolute" }} />
+                )}
+                <span style={{
+                  fontFamily: "Nunito, sans-serif", fontSize: 9, fontWeight: 800,
+                  color: isDone ? ACCENT.todo : txtMuted,
+                }}>{i + 1}</span>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Skjuter ner belöningen till kortets underkant oavsett hur många dagar tavlan har */}
+        <div style={{ flex: 1, minHeight: 0 }} />
+
+        <div style={{
+          display: "flex", alignItems: "center", gap: 10,
+          padding: "8px 12px", borderRadius: 12, flexShrink: 0,
+          background: allDone ? "rgba(245,158,11,0.16)" : tileBg,
+          border: allDone ? "2px solid #f59e0b" : `1px solid ${tileBorder}`,
+          opacity: allDone ? 1 : 0.6,
+        }}>
+          <span style={{ fontSize: 26, lineHeight: 1 }}>{chart.reward_icon || "🎁"}</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{
+              fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 800, color: txtColor,
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}>{chart.reward_text || "Belöning"}</div>
+            <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 10, color: allDone ? "#f59e0b" : txtMuted, fontWeight: 700 }}>
+              {allDone ? "Klart! 🎉" : `${total - done.size} kvar`}
+            </div>
+          </div>
+        </div>
+      </div>
+    </Card>
+  )
 }
 
 // Stor kvadratisk countdown-widget för TV-vyn — visar pinned countdown med fokus på siffran
@@ -5402,7 +5633,7 @@ function TvLayoutGrid({ layoutKey, slots, widgetProps, slotOverlay }) {
   )
 }
 
-function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, weather, slots, slotOverlay, onDayClick, photoUrl, countdowns, shoppingItems, onAddShoppingItem, onToggleShoppingItem, dark, userId, onQuickEditEvent, onDeleteEvent }) {
+function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, weather, slots, slotOverlay, onDayClick, photoUrl, countdowns, shoppingItems, onAddShoppingItem, onToggleShoppingItem, dark, userId, onQuickEditEvent, onDeleteEvent, rewardCharts, onToggleRewardDay }) {
   const s = { ...DEFAULT_TV_SLOTS, ...(slots || {}) }
   const layoutKey = s.layout || "standard"
   // Popovern håller bara id:t och slår upp eventet i calEvents, så att den
@@ -5413,6 +5644,7 @@ function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWe
   const widgetProps = {
     persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal,
     onDayClick, countdowns, shoppingItems, onAddShoppingItem, onToggleShoppingItem, dark,
+    rewardCharts, onToggleRewardDay,
     onEventTap: onQuickEditEvent ? (ev => setPopoverId(ev.id)) : undefined,
   }
 
@@ -5651,6 +5883,7 @@ export default function SmartHub({ session, household }) {
   const [members, setMembers] = useState([])
   const [activity, setActivity] = useState([]) // senaste aktiviteter i hushållet
   const [countdowns, setCountdowns] = useState([])
+  const [rewardCharts, setRewardCharts] = useState([])
   const [shoppingItems, setShoppingItems] = useState([])
   const [weather, setWeather] = useState(null)
 
@@ -5890,6 +6123,28 @@ export default function SmartHub({ session, household }) {
     }, p => {
       setCountdowns(prev => {
         if (p.eventType === "INSERT") return prev.some(c => c.id === p.new.id) ? prev : [...prev, p.new].sort((a, b) => a.target_date.localeCompare(b.target_date))
+        if (p.eventType === "UPDATE") return prev.map(c => c.id === p.new.id ? p.new : c)
+        if (p.eventType === "DELETE") return prev.filter(c => c.id !== p.old.id)
+        return prev
+      })
+    }).subscribe()
+    return () => { cancelled = true; supabase.removeChannel(ch) }
+  }, [householdId])
+
+  // ── Load + subscribe: reward_charts ──
+  // Realtime är hela poängen här: barnet trycker på väggen, och det ska synas
+  // i mobilen utan att någon laddar om.
+  useEffect(() => {
+    if (!householdId) return
+    let cancelled = false
+    supabase.from("reward_charts").select("*").eq("household_id", householdId)
+      .order("created_at", { ascending: false })
+      .then(({ data }) => { if (!cancelled && data) setRewardCharts(data) })
+    const ch = supabase.channel("reward_charts:" + householdId).on("postgres_changes", {
+      event: "*", schema: "public", table: "reward_charts", filter: "household_id=eq." + householdId,
+    }, p => {
+      setRewardCharts(prev => {
+        if (p.eventType === "INSERT") return prev.some(c => c.id === p.new.id) ? prev : [p.new, ...prev]
         if (p.eventType === "UPDATE") return prev.map(c => c.id === p.new.id ? p.new : c)
         if (p.eventType === "DELETE") return prev.filter(c => c.id !== p.old.id)
         return prev
@@ -6338,6 +6593,72 @@ export default function SmartHub({ session, household }) {
     await supabase.from("countdowns").update({ pinned: false }).eq("household_id", householdId).neq("id", id)
     await supabase.from("countdowns").update({ pinned: newPinned }).eq("id", id)
   }
+  // ── Belöningstavlor ──
+  // Trycket sker på väggskärmen, så optimistiskt med rollback är extra viktigt:
+  // rutan måste fyllas i direkt under fingret, annars trycker barnet igen.
+  async function handleToggleRewardDay(chart, dayIndex) {
+    if (!chart) return
+    const before = chart.completed_days || []
+    const next = before.includes(dayIndex)
+      ? before.filter(d => d !== dayIndex)
+      : [...before, dayIndex].sort((a, b) => a - b)
+    const nowComplete = next.length >= (chart.total_days || 7)
+    const completed_at = nowComplete ? new Date().toISOString() : null
+    setRewardCharts(p => p.map(c => c.id === chart.id ? { ...c, completed_days: next, completed_at } : c))
+    const { data, error } = await supabase.from("reward_charts")
+      .update({ completed_days: next, completed_at }).eq("id", chart.id).select()
+    if (error || !data || data.length === 0) {
+      setRewardCharts(p => p.map(c => c.id === chart.id ? chart : c))
+      console.error("[handleToggleRewardDay]", error)
+      showToast("Kunde inte spara")
+      return
+    }
+    // Logga bara när tavlan blir klar — annars dränks aktivitetsflödet i tryck.
+    if (nowComplete && !chart.completed_at) {
+      logActivity("reward_done", "reward", chart.id, `klarade "${chart.title}" 🎉`)
+    }
+  }
+  async function handleAddRewardChart(c) {
+    if (!householdId) return
+    const { data, error } = await supabase.from("reward_charts").insert({
+      household_id: householdId,
+      title: c.title,
+      day_icon: c.day_icon || "⭐",
+      total_days: c.total_days || 7,
+      completed_days: [],
+      reward_text: c.reward_text || null,
+      reward_icon: c.reward_icon || "🎁",
+      pinned: true,
+      created_by: userId,
+    }).select().single()
+    if (error) { console.error("[handleAddRewardChart]", error); showToast("Kunde inte skapa tavlan"); return }
+    // Bara en tavla i taget visas på TV:n — avmarkera de andra.
+    await supabase.from("reward_charts").update({ pinned: false })
+      .eq("household_id", householdId).neq("id", data.id)
+    setRewardCharts(p => [data, ...p.map(x => ({ ...x, pinned: false }))])
+    logActivity("add_reward", "reward", data.id, `skapade tavlan "${c.title}"`)
+  }
+  async function handleDeleteRewardChart(id) {
+    const before = rewardCharts
+    setRewardCharts(p => p.filter(c => c.id !== id))
+    const { data, error } = await supabase.from("reward_charts").delete().eq("id", id).select()
+    if (error || !data || data.length === 0) {
+      setRewardCharts(before)
+      showToast("Kunde inte ta bort tavlan")
+    }
+  }
+  async function handlePinRewardChart(id) {
+    setRewardCharts(p => p.map(c => ({ ...c, pinned: c.id === id })))
+    await supabase.from("reward_charts").update({ pinned: false }).eq("household_id", householdId).neq("id", id)
+    await supabase.from("reward_charts").update({ pinned: true }).eq("id", id)
+  }
+  async function handleResetRewardChart(id) {
+    const before = rewardCharts.find(c => c.id === id)
+    setRewardCharts(p => p.map(c => c.id === id ? { ...c, completed_days: [], completed_at: null } : c))
+    const { error } = await supabase.from("reward_charts")
+      .update({ completed_days: [], completed_at: null }).eq("id", id)
+    if (error && before) setRewardCharts(p => p.map(c => c.id === id ? before : c))
+  }
   async function handleSaveTvPhoto(url) {
     setTvPhotoUrl(url)
     if (!householdId) return
@@ -6710,6 +7031,8 @@ export default function SmartHub({ session, household }) {
           onToggleShoppingItem={handleToggleShoppingItem}
           onDayClick={openDayModal}
           userId={userId}
+          rewardCharts={rewardCharts}
+          onToggleRewardDay={handleToggleRewardDay}
           onQuickEditEvent={handleQuickEditEvent}
           onDeleteEvent={handleDeleteEvent}
         />
@@ -6755,6 +7078,11 @@ export default function SmartHub({ session, household }) {
     themeColor, setThemeColor,
     mobileTheme, tvTheme,
     onSetMobileTheme: handleSetMobileTheme, onSetTvTheme: handleSetTvTheme,
+    rewardCharts,
+    onAddRewardChart: handleAddRewardChart,
+    onDeleteRewardChart: handleDeleteRewardChart,
+    onPinRewardChart: handlePinRewardChart,
+    onResetRewardChart: handleResetRewardChart,
     displayName: members.find(m => m.user_id === userId)?.display_name || "",
     onSaveDisplayName: handleSaveDisplayName,
     pushStatus, onEnablePush: handleEnablePush, onDisablePush: handleDisablePush,

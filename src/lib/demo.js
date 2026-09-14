@@ -99,12 +99,20 @@ function buildStore() {
       { id: newId(), household_id: DEMO_HH, title: "Gotland", target_date: day(4), pinned: true, created_by: DEMO_USER, created_at: at(-40, "10:00") },
       { id: newId(), household_id: DEMO_HH, title: "Alex födelsedag", target_date: day(11), pinned: false, created_by: DEMO_MATE, created_at: at(-40, "10:00") },
     ],
+    reward_charts: [
+      {
+        id: newId(), household_id: DEMO_HH, title: "Sova utan napp",
+        day_icon: "🍼", total_days: 7, completed_days: [0, 1, 2, 3],
+        reward_text: "Ge nappen till kaninerna", reward_icon: "🎁",
+        pinned: true, created_by: DEMO_USER, created_at: at(-4, "19:00"), completed_at: null,
+      },
+    ],
     activity_log: [
       { id: newId(), household_id: DEMO_HH, user_id: DEMO_MATE, action: "add_event", entity: "event", entity_id: null, text: 'lade till "Middag hos mormor"', created_at: at(-1, "19:12") },
       { id: newId(), household_id: DEMO_HH, user_id: DEMO_MATE, action: "add_todo", entity: "todo", entity_id: null, text: 'lade till "Ringa elektrikern"', created_at: at(-1, "09:00") },
     ],
     tv_layouts: [
-      { household_id: DEMO_HH, widgets: null, photo_url: null, slots: { layout: "standard", main: "calendar", bottomLeft: "todo", bottomRight: "meal" }, updated_at: at(-5, "10:00") },
+      { household_id: DEMO_HH, widgets: null, photo_url: null, slots: { layout: "standard", main: "calendar", bottomLeft: "reward", bottomRight: "meal" }, updated_at: at(-5, "10:00") },
     ],
     layouts: [],
     food_preferences: [],

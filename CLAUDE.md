@@ -86,6 +86,12 @@ Databasen innehåller dessutom (verifierat via pg_policies 2026-08-11):
   **theme** (default 'default')
 - `households`: id, name, created_by, created_at, **tv_theme** (default 'default')
 - `layouts`: user_id, layout_id, assignments (jsonb), bg_id, updated_at
+- `reward_charts`: id, household_id, title, day_icon, total_days (1–31),
+  **completed_days (int[])**, reward_text, reward_icon, pinned, created_by,
+  created_at, completed_at
+  → belöningstavlor som barnet bockar av direkt på TV:n. Ifyllda dagar ligger
+  som en array av index i stället för en rad per dag: tavlan är alltid liten
+  och läses alltid i sin helhet. Bara den `pinned` tavlan visas på väggen.
 
 ### Funktioner
 - `is_household_member(household_id)` — RLS-helper.
@@ -118,6 +124,7 @@ Per tabell:
 | `invites` | **alla inloggade** + member | member | inloggad där `used_by IS NULL` | ingen policy |
 | `activity_log` | member | member + `user_id = auth.uid()` | ingen policy | ingen policy |
 | `shopping_items` | member | member (ALL) | member (ALL) | member (ALL) |
+| `reward_charts` | member | member | member | member |
 | `food_preferences` | own | own (ALL) | own (ALL) | own (ALL) |
 | `push_subscriptions` | own | own (ALL) | own (ALL) | own (ALL) |
 
