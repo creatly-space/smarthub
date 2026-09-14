@@ -102,7 +102,7 @@ function buildStore() {
     reward_charts: [
       {
         id: newId(), household_id: DEMO_HH, title: "Sova utan napp",
-        day_icon: "🍼", total_days: 7, completed_days: [0, 1, 2, 3],
+        day_icon: "napp", total_days: 7, completed_days: [0, 1, 2, 3],
         reward_text: "Ge nappen till kaninerna", reward_icon: "🎁",
         pinned: true, created_by: DEMO_USER, created_at: at(-4, "19:00"), completed_at: null,
       },

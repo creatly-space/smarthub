@@ -3839,12 +3839,11 @@ function normalizeTvWidget(w) {
 // Liten visuell mini-preview för varje layout
 function LayoutPresetMini({ layoutKey, active }) {
   const preset = LAYOUT_PRESETS[layoutKey]
-  const color = active ? ACCENT.calendar : t.textMuted
-  const cellStyle = {
-    background: `${color}25`,
-    border: `1px solid ${color}50`,
-    borderRadius: 2,
-  }
+  // Inte `${färg}25` här: t.* är CSS-variabler sedan temastödet kom, och
+  // "var(--sh-text-3)25" är ogiltig CSS — miniatyrerna blev osynliga.
+  const cellStyle = active
+    ? { background: `${ACCENT.calendar}25`, border: `1px solid ${ACCENT.calendar}50`, borderRadius: 2 }
+    : { background: t.inputBg, border: `1px solid ${t.inputBorder}`, borderRadius: 2 }
   const W = 32, H = 50
   // Specialfall för sidebar
   if (preset.sidebarLayout) {
@@ -4163,8 +4162,30 @@ function ThemeSection({ onBack, mobileTheme, tvTheme, onSetMobileTheme, onSetTvT
   )
 }
 
+// Det finns ingen napp-emoji i Unicode, och det är precis den ikon en tavla om
+// nappavvänjning behöver. Så den är ritad. Värdet "napp" i day_icon betyder
+// den här bilden i stället för ett tecken.
+function PacifierIcon({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-label="napp">
+      <ellipse cx="12" cy="19.2" rx="2.6" ry="3.4" fill="#f0d0ae" stroke="#3f3a36" strokeWidth="1.1" />
+      <ellipse cx="12" cy="13.4" rx="7.2" ry="4.4" fill="#5aa9e6" stroke="#3f3a36" strokeWidth="1.2" />
+      <circle cx="12" cy="6.6" r="4.1" fill="none" stroke="#5aa9e6" strokeWidth="2.4" />
+      <circle cx="12" cy="6.6" r="4.1" fill="none" stroke="#3f3a36" strokeWidth="0.9" opacity="0.5" />
+    </svg>
+  )
+}
+// Renderar en dagsikon — antingen den ritade nappen eller en emoji.
+function DayIcon({ icon, size, faded }) {
+  const style = { fontSize: size, lineHeight: 1, opacity: faded ? 0.22 : 1 }
+  if (icon === "napp") {
+    return <span style={{ ...style, display: "flex" }}><PacifierIcon size={size} /></span>
+  }
+  return <span style={style}>{icon || "⭐"}</span>
+}
+
 // Ikoner som passar det en belöningstavla brukar handla om.
-const REWARD_DAY_ICONS = ["⭐", "🍼", "🪥", "🚽", "🛏️", "🥦", "📚", "🧦", "🧹", "⚽", "🎵", "😊"]
+const REWARD_DAY_ICONS = ["napp", "⭐", "🪥", "🚽", "🛏️", "🥦", "📚", "🧦", "🧹", "⚽", "🎵", "😊"]
 const REWARD_PRIZE_ICONS = ["🎁", "🍦", "🎬", "🧸", "🍕", "🎡", "🏊", "🪁"]
 
 function RewardChartsSection({ onBack, charts, onAdd, onDelete, onPin, onReset }) {
@@ -4193,9 +4214,10 @@ function RewardChartsSection({ onBack, charts, onAdd, onDelete, onPin, onReset }
       {list.map(ic => (
         <button key={ic} onClick={() => onPick(ic)} style={{
           height: 38, fontSize: 19, cursor: "pointer", borderRadius: 9,
+          display: "flex", alignItems: "center", justifyContent: "center",
           background: value === ic ? `${ACCENT.todo}18` : t.inputBg,
           border: value === ic ? `2px solid ${ACCENT.todo}` : `1px solid ${t.inputBorder}`,
-        }}>{ic}</button>
+        }}>{ic === "napp" ? <PacifierIcon size={22} /> : ic}</button>
       ))}
     </div>
   )
@@ -4212,7 +4234,7 @@ function RewardChartsSection({ onBack, charts, onAdd, onDelete, onPin, onReset }
           <Card key={c.id} style={{ marginBottom: 10 }} accent={allDone ? "#f59e0b" : ACCENT.todo}>
             <div style={{ padding: 14 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: 24 }}>{c.day_icon || "⭐"}</span>
+                <DayIcon icon={c.day_icon} size={26} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 14, fontWeight: 800, color: t.text }}>{c.title}</div>
                   <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textSec }}>
@@ -5212,7 +5234,7 @@ function getTvSlotOptions() {
     { id: "events",    label: "Dagens händelser", color: ACCENT.event, icon: CalendarDays },
     { id: "countdown", label: "Nedräkning", color: "#db2777", icon: Sparkles },
     { id: "reward",    label: "Belöningstavla", color: ACCENT.todo, icon: Check },
-    { id: "empty",     label: "Tom",      color: t.textMuted,     icon: X },
+    { id: "empty",     label: "Tom",      color: "#94a3b8",       icon: X },
   ]
 }
 const DEFAULT_TV_SLOTS = { layout: "standard", main: "calendar", bottomLeft: "todo", bottomRight: "meal" }
@@ -5338,18 +5360,23 @@ function TvRewardChartCard({ charts, onToggleDay, dark }) {
   // Rutorna mäts i stället för att gissas. Widgeten kan ligga i en halv slot
   // eller över hela bredden, och en tvååring ska kunna träffa rätt i båda —
   // så ikon, siffra och bock skalar med rutans faktiska storlek.
+  const rows = Math.ceil(total / cols)
   const gridRef = useRef(null)
   const [tileSize, setTileSize] = useState(0)
   useLayoutEffect(() => {
     const el = gridRef.current
     if (!el || typeof ResizeObserver === "undefined") return
-    const measure = () => setTileSize(Math.max(0, (el.clientWidth - (cols - 1) * GAP) / cols))
+    const measure = () => {
+      const w = (el.clientWidth - (cols - 1) * GAP) / cols
+      const h = (el.clientHeight - (rows - 1) * GAP) / rows
+      setTileSize(Math.max(0, Math.min(w, h)))
+    }
     measure()
     const ro = new ResizeObserver(measure)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [cols])
-  const iconSize = Math.max(14, tileSize * 0.46)
+  }, [cols, rows])
+  const iconSize = Math.max(14, tileSize * 0.58)
   const numSize = Math.max(9, tileSize * 0.17)
   const checkSize = Math.max(16, tileSize * 0.6)
 
@@ -5368,15 +5395,18 @@ function TvRewardChartCard({ charts, onToggleDay, dark }) {
           }}>{done.size}/{total}</span>
         </div>
 
+        {/* Rutorna fyller höjden i stället för att vara kvadrater med luft under */}
         <div ref={gridRef} style={{
-          display: "grid", gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap: GAP,
-          minWidth: 0, alignContent: "start", overflow: "hidden",
+          display: "grid",
+          gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+          gridAutoRows: "minmax(0, 1fr)",
+          gap: GAP, flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden",
         }}>
           {Array.from({ length: total }, (_, i) => {
             const isDone = done.has(i)
             return (
               <button key={i} onClick={() => onToggleDay(chart, i)} style={{
-                position: "relative", aspectRatio: "1", minWidth: 0, padding: 0,
+                position: "relative", minWidth: 0, minHeight: 0, padding: 0,
                 border: isDone ? `4px solid ${ACCENT.todo}` : `3px solid ${tileBorder}`,
                 borderRadius: Math.max(10, tileSize * 0.22), cursor: "pointer",
                 background: isDone ? `${ACCENT.todo}26` : tileBg,
@@ -5384,7 +5414,7 @@ function TvRewardChartCard({ charts, onToggleDay, dark }) {
                 alignItems: "center", justifyContent: "center", gap: 0,
                 transition: "background 0.15s, border-color 0.15s",
               }}>
-                <span style={{ fontSize: iconSize, lineHeight: 1, opacity: isDone ? 0.22 : 1 }}>{chart.day_icon || "⭐"}</span>
+                <DayIcon icon={chart.day_icon} size={iconSize} faded={isDone} />
                 {isDone && (
                   <Check size={checkSize} color={ACCENT.todo} strokeWidth={4} style={{ position: "absolute" }} />
                 )}
@@ -5397,9 +5427,6 @@ function TvRewardChartCard({ charts, onToggleDay, dark }) {
             )
           })}
         </div>
-
-        {/* Skjuter ner belöningen till kortets underkant oavsett hur många dagar tavlan har */}
-        <div style={{ flex: 1, minHeight: 0 }} />
 
         <div style={{
           display: "flex", alignItems: "center", gap: 14,
