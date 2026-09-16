@@ -4189,25 +4189,53 @@ function DayIcon({ icon, size, faded }) {
 const REWARD_DAY_ICONS = ["napp", "⭐", "🪥", "🚽", "🛏️", "🥦", "📚", "🧦", "🧹", "⚽", "🎵", "😊"]
 const REWARD_PRIZE_ICONS = ["🎁", "🍦", "🎬", "🧸", "🍕", "🎡", "🏊", "🪁"]
 
-function RewardChartsSection({ onBack, charts, onAdd, onDelete, onPin, onReset }) {
-  const [showAdd, setShowAdd] = useState(charts.length === 0)
+function RewardChartsSection({ onBack, charts, onAdd, onUpdate, onDelete, onPin, onReset }) {
+  // Samma formulär används för att skapa och för att ändra. editingId är null
+  // vid "Ny tavla" och tavlans id när man ändrar en befintlig.
+  const [formOpen, setFormOpen] = useState(charts.length === 0)
+  const [editingId, setEditingId] = useState(null)
   const [title, setTitle] = useState("")
   const [dayIcon, setDayIcon] = useState("⭐")
   const [days, setDays] = useState(7)
   const [rewardText, setRewardText] = useState("")
   const [rewardIcon, setRewardIcon] = useState("🎁")
 
+  function openNew() {
+    setEditingId(null)
+    setTitle(""); setDayIcon("⭐"); setDays(7); setRewardText(""); setRewardIcon("🎁")
+    setFormOpen(true)
+  }
+  function openEdit(c) {
+    setEditingId(c.id)
+    setTitle(c.title || "")
+    setDayIcon(c.day_icon || "⭐")
+    setDays(c.total_days || 7)
+    setRewardText(c.reward_text || "")
+    setRewardIcon(c.reward_icon || "🎁")
+    setFormOpen(true)
+  }
+
+  const editing = editingId ? charts.find(c => c.id === editingId) : null
+  const nyaDagar = Math.min(31, Math.max(1, Number(days) || 7))
+  // Varning innan man krymper en tavla som redan har ifyllda dagar bortom
+  // den nya sista rutan — de försvinner.
+  const tappas = editing
+    ? (editing.completed_days || []).filter(d => d >= nyaDagar).length
+    : 0
+
   function submit() {
     if (!title.trim()) return
-    onAdd({
+    const payload = {
       title: title.trim(),
       day_icon: dayIcon,
-      total_days: Math.min(31, Math.max(1, Number(days) || 7)),
+      total_days: nyaDagar,
       reward_text: rewardText.trim() || null,
       reward_icon: rewardIcon,
-    })
-    setTitle(""); setRewardText(""); setDays(7); setDayIcon("⭐"); setRewardIcon("🎁")
-    setShowAdd(false)
+    }
+    if (editingId) onUpdate(editingId, payload)
+    else onAdd(payload)
+    setFormOpen(false)
+    setEditingId(null)
   }
 
   const iconGrid = (list, value, onPick) => (
@@ -4258,6 +4286,9 @@ function RewardChartsSection({ onBack, charts, onAdd, onDelete, onPin, onReset }
                     <Monitor size={12} /> Visa på TV
                   </Btn>
                 )}
+                <Btn small outline color={ACCENT.calendar} onClick={() => openEdit(c)}>
+                  <Edit3 size={12} /> Ändra
+                </Btn>
                 <Btn small outline onClick={() => { if (confirm(`Nollställa "${c.title}"?`)) onReset(c.id) }}>
                   Nollställ
                 </Btn>
@@ -4270,14 +4301,16 @@ function RewardChartsSection({ onBack, charts, onAdd, onDelete, onPin, onReset }
         )
       })}
 
-      {!showAdd ? (
-        <Btn color={ACCENT.todo} onClick={() => setShowAdd(true)} style={{ width: "100%", justifyContent: "center", padding: "12px 14px" }}>
+      {!formOpen ? (
+        <Btn color={ACCENT.todo} onClick={openNew} style={{ width: "100%", justifyContent: "center", padding: "12px 14px" }}>
           <Plus size={14} /> Ny tavla
         </Btn>
       ) : (
-        <Card>
+        <Card accent={editingId ? ACCENT.calendar : ACCENT.todo}>
           <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 15, fontWeight: 700, color: t.text }}>Ny tavla</div>
+            <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 15, fontWeight: 700, color: t.text }}>
+              {editingId ? "Ändra tavla" : "Ny tavla"}
+            </div>
 
             <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Vad ska tränas? T.ex. Sova utan napp" style={{ ...inputStyle, fontSize: 14 }} autoFocus />
 
@@ -4299,9 +4332,21 @@ function RewardChartsSection({ onBack, charts, onAdd, onDelete, onPin, onReset }
               {iconGrid(REWARD_PRIZE_ICONS, rewardIcon, setRewardIcon)}
             </div>
 
+            {tappas > 0 && (
+              <div style={{
+                fontFamily: "Nunito, sans-serif", fontSize: 11.5, fontWeight: 700, lineHeight: 1.4,
+                color: "#b45309", background: "rgba(245,158,11,0.14)",
+                padding: "8px 10px", borderRadius: 8,
+              }}>
+                Färre dagar än tidigare — {tappas} redan ifylld{tappas === 1 ? " dag" : "a dagar"} försvinner.
+              </div>
+            )}
+
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <Btn outline onClick={() => setShowAdd(false)}>Avbryt</Btn>
-              <Btn color={ACCENT.todo} onClick={submit}>Skapa</Btn>
+              <Btn outline onClick={() => { setFormOpen(false); setEditingId(null) }}>Avbryt</Btn>
+              <Btn color={editingId ? ACCENT.calendar : ACCENT.todo} onClick={submit}>
+                {editingId ? "Spara" : "Skapa"}
+              </Btn>
             </div>
           </div>
         </Card>
@@ -4314,7 +4359,7 @@ function RewardChartsSection({ onBack, charts, onAdd, onDelete, onPin, onReset }
   )
 }
 
-function SettingsTab({ isMobile, session, household, members, foodPrefs, setFoodPrefs, onCreateInvite, tvData, tvSlots, onSaveTvSlots, tvPhotoUrl, onSaveTvPhoto, onUploadTvPhoto, userId, themeColor, setThemeColor, displayName, onSaveDisplayName, pushStatus, onEnablePush, onDisablePush, mobileTheme, tvTheme, onSetMobileTheme, onSetTvTheme, rewardCharts, onAddRewardChart, onDeleteRewardChart, onPinRewardChart, onResetRewardChart }) {
+function SettingsTab({ isMobile, session, household, members, foodPrefs, setFoodPrefs, onCreateInvite, tvData, tvSlots, onSaveTvSlots, tvPhotoUrl, onSaveTvPhoto, onUploadTvPhoto, userId, themeColor, setThemeColor, displayName, onSaveDisplayName, pushStatus, onEnablePush, onDisablePush, mobileTheme, tvTheme, onSetMobileTheme, onSetTvTheme, rewardCharts, onAddRewardChart, onUpdateRewardChart, onDeleteRewardChart, onPinRewardChart, onResetRewardChart }) {
   const [activeSection, setActiveSection] = useState(null)
   const sections = [
     { id: "profile", icon: User, label: "Profil", desc: "Namn, profilbild" },
@@ -4328,7 +4373,7 @@ function SettingsTab({ isMobile, session, household, members, foodPrefs, setFood
   if (activeSection === "tv") return <TvEditorSection onBack={() => setActiveSection(null)} isMobile={isMobile} tvData={tvData} tvSlots={tvSlots} onSaveTvSlots={onSaveTvSlots} tvPhotoUrl={tvPhotoUrl} onSaveTvPhoto={onSaveTvPhoto} onUploadTvPhoto={onUploadTvPhoto} />
   if (activeSection === "profile") return <ProfileSection onBack={() => setActiveSection(null)} session={session} themeColor={themeColor} setThemeColor={setThemeColor} displayName={displayName} onSaveDisplayName={onSaveDisplayName} pushStatus={pushStatus} onEnablePush={onEnablePush} onDisablePush={onDisablePush} />
   if (activeSection === "theme") return <ThemeSection onBack={() => setActiveSection(null)} mobileTheme={mobileTheme} tvTheme={tvTheme} onSetMobileTheme={onSetMobileTheme} onSetTvTheme={onSetTvTheme} />
-  if (activeSection === "reward") return <RewardChartsSection onBack={() => setActiveSection(null)} charts={rewardCharts || []} onAdd={onAddRewardChart} onDelete={onDeleteRewardChart} onPin={onPinRewardChart} onReset={onResetRewardChart} />
+  if (activeSection === "reward") return <RewardChartsSection onBack={() => setActiveSection(null)} charts={rewardCharts || []} onAdd={onAddRewardChart} onUpdate={onUpdateRewardChart} onDelete={onDeleteRewardChart} onPin={onPinRewardChart} onReset={onResetRewardChart} />
   if (activeSection === "household") return <HouseholdSection onBack={() => setActiveSection(null)} household={household} members={members} userId={userId} onCreateInvite={onCreateInvite} />
   if (activeSection === "food") return <FoodPrefsSection onBack={() => setActiveSection(null)} foodPrefs={foodPrefs} setFoodPrefs={setFoodPrefs} />
   if (activeSection === "account") return <AccountSection onBack={() => setActiveSection(null)} />
@@ -5005,7 +5050,7 @@ function TabContent({
   tvPhotoUrl, onSaveTvPhoto, onUploadTvPhoto,
   themeColor, setThemeColor,
   mobileTheme, tvTheme, onSetMobileTheme, onSetTvTheme,
-  rewardCharts, onAddRewardChart, onDeleteRewardChart, onPinRewardChart, onResetRewardChart,
+  rewardCharts, onAddRewardChart, onUpdateRewardChart, onDeleteRewardChart, onPinRewardChart, onResetRewardChart,
   displayName, onSaveDisplayName,
   pushStatus, onEnablePush, onDisablePush,
   // activity + countdowns + meal history
@@ -5137,7 +5182,7 @@ function TabContent({
         mobileTheme={mobileTheme} tvTheme={tvTheme}
         onSetMobileTheme={onSetMobileTheme} onSetTvTheme={onSetTvTheme}
         rewardCharts={rewardCharts}
-        onAddRewardChart={onAddRewardChart} onDeleteRewardChart={onDeleteRewardChart}
+        onAddRewardChart={onAddRewardChart} onUpdateRewardChart={onUpdateRewardChart} onDeleteRewardChart={onDeleteRewardChart}
         onPinRewardChart={onPinRewardChart} onResetRewardChart={onResetRewardChart}
         displayName={displayName} onSaveDisplayName={onSaveDisplayName}
         pushStatus={pushStatus} onEnablePush={onEnablePush} onDisablePush={onDisablePush} />
@@ -6709,6 +6754,32 @@ export default function SmartHub({ session, household }) {
     setRewardCharts(p => [data, ...p.map(x => ({ ...x, pinned: false }))])
     logActivity("add_reward", "reward", data.id, `skapade tavlan "${c.title}"`)
   }
+  async function handleUpdateRewardChart(id, patch) {
+    const before = rewardCharts.find(c => c.id === id)
+    if (!before) return
+    const total = patch.total_days ?? before.total_days
+    // Krymper man tavlan finns det ifyllda dagar bortom sista rutan. De måste
+    // bort, annars står räknaren på 8/5 och belöningen tänds i förtid.
+    const kept = (before.completed_days || []).filter(d => d < total)
+    const next = {
+      title: patch.title ?? before.title,
+      day_icon: patch.day_icon ?? before.day_icon,
+      total_days: total,
+      reward_text: patch.reward_text !== undefined ? patch.reward_text : before.reward_text,
+      reward_icon: patch.reward_icon ?? before.reward_icon,
+      completed_days: kept,
+      completed_at: kept.length >= total ? (before.completed_at || new Date().toISOString()) : null,
+    }
+    setRewardCharts(p => p.map(c => c.id === id ? { ...c, ...next } : c))
+    const { data, error } = await supabase.from("reward_charts").update(next).eq("id", id).select()
+    if (error || !data || data.length === 0) {
+      setRewardCharts(p => p.map(c => c.id === id ? before : c))
+      console.error("[handleUpdateRewardChart]", error)
+      showToast("Kunde inte spara ändringen")
+      return
+    }
+    setRewardCharts(p => p.map(c => c.id === id ? data[0] : c))
+  }
   async function handleDeleteRewardChart(id) {
     const before = rewardCharts
     setRewardCharts(p => p.filter(c => c.id !== id))
@@ -7151,6 +7222,7 @@ export default function SmartHub({ session, household }) {
     onSetMobileTheme: handleSetMobileTheme, onSetTvTheme: handleSetTvTheme,
     rewardCharts,
     onAddRewardChart: handleAddRewardChart,
+    onUpdateRewardChart: handleUpdateRewardChart,
     onDeleteRewardChart: handleDeleteRewardChart,
     onPinRewardChart: handlePinRewardChart,
     onResetRewardChart: handleResetRewardChart,
