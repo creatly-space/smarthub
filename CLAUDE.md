@@ -87,11 +87,14 @@ Databasen innehåller dessutom (verifierat via pg_policies 2026-08-11):
 - `households`: id, name, created_by, created_at, **tv_theme** (default 'default')
 - `layouts`: user_id, layout_id, assignments (jsonb), bg_id, updated_at
 - `reward_charts`: id, household_id, title, day_icon, total_days (1–31),
-  **completed_days (int[])**, reward_text, reward_icon, pinned, created_by,
-  created_at, completed_at
+  **completed_days (int[])**, **day_icons (text[])**, **day_labels (text[])**,
+  reward_text, reward_icon, pinned, created_by, created_at, completed_at
   → belöningstavlor som barnet bockar av direkt på TV:n. Ifyllda dagar ligger
   som en array av index i stället för en rad per dag: tavlan är alltid liten
   och läses alltid i sin helhet. Bara den `pinned` tavlan visas på väggen.
+  → `day_icons`/`day_labels` har samma index som rutorna. Tom sträng eller
+  index bortom arrayen betyder "använd tavlans `day_icon`", så man bara fyller
+  i de rutor som ska avvika — t.ex. sista dagen.
 
 ### Funktioner
 - `is_household_member(household_id)` — RLS-helper.

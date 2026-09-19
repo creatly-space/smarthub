@@ -4186,7 +4186,7 @@ function DayIcon({ icon, size, faded }) {
 }
 
 // Ikoner som passar det en belöningstavla brukar handla om.
-const REWARD_DAY_ICONS = ["napp", "⭐", "🪥", "🚽", "🛏️", "🥦", "📚", "🧦", "🧹", "⚽", "🎵", "😊"]
+const REWARD_DAY_ICONS = ["napp", "⭐", "🪥", "🚽", "🛏️", "🥦", "📚", "🧦", "🧹", "⚽", "🎵", "😊", "🐰", "🐶", "🏆", "🎉"]
 const REWARD_PRIZE_ICONS = ["🎁", "🍦", "🎬", "🧸", "🍕", "🎡", "🏊", "🪁"]
 
 function RewardChartsSection({ onBack, charts, onAdd, onUpdate, onDelete, onPin, onReset }) {
@@ -4199,10 +4199,16 @@ function RewardChartsSection({ onBack, charts, onAdd, onUpdate, onDelete, onPin,
   const [days, setDays] = useState(7)
   const [rewardText, setRewardText] = useState("")
   const [rewardIcon, setRewardIcon] = useState("🎁")
+  // Per ruta. Tom plats = använd tavlans standardikon, så man bara fyller i
+  // de rutor som ska avvika — t.ex. sista dagen.
+  const [dayIcons, setDayIcons] = useState([])
+  const [dayLabels, setDayLabels] = useState([])
+  const [openDay, setOpenDay] = useState(null)
 
   function openNew() {
     setEditingId(null)
     setTitle(""); setDayIcon("⭐"); setDays(7); setRewardText(""); setRewardIcon("🎁")
+    setDayIcons([]); setDayLabels([]); setOpenDay(null)
     setFormOpen(true)
   }
   function openEdit(c) {
@@ -4212,7 +4218,30 @@ function RewardChartsSection({ onBack, charts, onAdd, onUpdate, onDelete, onPin,
     setDays(c.total_days || 7)
     setRewardText(c.reward_text || "")
     setRewardIcon(c.reward_icon || "🎁")
+    setDayIcons([...(c.day_icons || [])])
+    setDayLabels([...(c.day_labels || [])])
+    setOpenDay(null)
     setFormOpen(true)
+  }
+  function setDayIconAt(i, ic) {
+    setDayIcons(prev => {
+      const next = [...prev]
+      while (next.length <= i) next.push("")
+      next[i] = next[i] === ic ? "" : ic   // tryck igen = tillbaka till standard
+      return next
+    })
+  }
+  function clearDayAt(i) {
+    setDayIcons(prev => { const n = [...prev]; while (n.length <= i) n.push(""); n[i] = ""; return n })
+    setDayLabels(prev => { const n = [...prev]; while (n.length <= i) n.push(""); n[i] = ""; return n })
+  }
+  function setDayLabelAt(i, text) {
+    setDayLabels(prev => {
+      const next = [...prev]
+      while (next.length <= i) next.push("")
+      next[i] = text
+      return next
+    })
   }
 
   const editing = editingId ? charts.find(c => c.id === editingId) : null
@@ -4229,6 +4258,8 @@ function RewardChartsSection({ onBack, charts, onAdd, onUpdate, onDelete, onPin,
       title: title.trim(),
       day_icon: dayIcon,
       total_days: nyaDagar,
+      day_icons: Array.from({ length: nyaDagar }, (_, i) => dayIcons[i] || ""),
+      day_labels: Array.from({ length: nyaDagar }, (_, i) => (dayLabels[i] || "").trim()),
       reward_text: rewardText.trim() || null,
       reward_icon: rewardIcon,
     }
@@ -4330,6 +4361,61 @@ function RewardChartsSection({ onBack, charts, onAdd, onUpdate, onDelete, onPin,
             <div>
               <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, fontWeight: 700, color: t.textMuted, marginBottom: 6 }}>IKON PÅ BELÖNINGEN</div>
               {iconGrid(REWARD_PRIZE_ICONS, rewardIcon, setRewardIcon)}
+            </div>
+
+            {/* Enskilda rutor. Sista dagen är ofta något annat än de andra —
+                "Ge nappen till kaninerna" — så varje ruta ska kunna avvika. */}
+            <div>
+              <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 11, fontWeight: 700, color: t.textMuted, marginBottom: 6 }}>
+                ENSKILDA RUTOR <span style={{ fontWeight: 600, textTransform: "none" }}>— tryck på en ruta för att ge den egen ikon och text</span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(nyaDagar, 7)}, minmax(0, 1fr))`, gap: 5 }}>
+                {Array.from({ length: nyaDagar }, (_, i) => {
+                  const egen = (dayIcons[i] || "").trim()
+                  const etikett = (dayLabels[i] || "").trim()
+                  const vald = openDay === i
+                  return (
+                    <button key={i} onClick={() => setOpenDay(vald ? null : i)} style={{
+                      aspectRatio: "1", minWidth: 0, padding: 2, cursor: "pointer", borderRadius: 10,
+                      background: vald ? `${ACCENT.calendar}14` : t.inputBg,
+                      border: vald ? `2px solid ${ACCENT.calendar}`
+                        : (egen || etikett) ? `2px solid ${ACCENT.todo}` : `1px solid ${t.inputBorder}`,
+                      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1,
+                      overflow: "hidden",
+                    }}>
+                      <DayIcon icon={egen || dayIcon} size={etikett ? 16 : 20} />
+                      <span style={{
+                        fontFamily: "Nunito, sans-serif", fontSize: 8, fontWeight: 800, lineHeight: 1.1,
+                        color: t.textMuted, textAlign: "center",
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%",
+                      }}>{etikett || i + 1}</span>
+                    </button>
+                  )
+                })}
+              </div>
+
+              {openDay !== null && openDay < nyaDagar && (
+                <div style={{
+                  marginTop: 8, padding: 10, borderRadius: 12,
+                  background: t.inputBg, border: `1px solid ${t.inputBorder}`,
+                  display: "flex", flexDirection: "column", gap: 8,
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, fontWeight: 800, color: t.text }}>Ruta {openDay + 1}</span>
+                    <button onClick={() => clearDayAt(openDay)} style={{
+                      background: "none", border: "none", cursor: "pointer", padding: 0,
+                      fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textMuted, textDecoration: "underline",
+                    }}>Återställ till standard</button>
+                  </div>
+                  {iconGrid(REWARD_DAY_ICONS, dayIcons[openDay] || "", ic => setDayIconAt(openDay, ic))}
+                  <input
+                    value={dayLabels[openDay] || ""}
+                    onChange={e => setDayLabelAt(openDay, e.target.value)}
+                    placeholder="Text i rutan, t.ex. Ge nappen till kaninerna"
+                    style={{ ...inputStyle, fontSize: 13 }}
+                  />
+                </div>
+              )}
             </div>
 
             {tappas > 0 && (
@@ -5450,6 +5536,9 @@ function TvRewardChartCard({ charts, onToggleDay, dark }) {
         }}>
           {Array.from({ length: total }, (_, i) => {
             const isDone = done.has(i)
+            // Tom sträng eller index bortom arrayen = använd tavlans standard.
+            const ikon = (chart.day_icons || [])[i] || chart.day_icon
+            const etikett = ((chart.day_labels || [])[i] || "").trim()
             return (
               <button key={i} onClick={() => onToggleDay(chart, i)} style={{
                 position: "relative", minWidth: 0, minHeight: 0, padding: 0,
@@ -5458,17 +5547,26 @@ function TvRewardChartCard({ charts, onToggleDay, dark }) {
                 background: isDone ? `${ACCENT.todo}26` : tileBg,
                 display: "flex", flexDirection: "column",
                 alignItems: "center", justifyContent: "center", gap: 0,
+                overflow: "hidden",
                 transition: "background 0.15s, border-color 0.15s",
               }}>
-                <DayIcon icon={chart.day_icon} size={iconSize} faded={isDone} />
+                <DayIcon icon={ikon} size={etikett ? iconSize * 0.78 : iconSize} faded={isDone} />
                 {isDone && (
                   <Check size={checkSize} color={ACCENT.todo} strokeWidth={4} style={{ position: "absolute" }} />
                 )}
-                <span style={{
-                  fontFamily: "Nunito, sans-serif", fontSize: numSize, fontWeight: 800,
-                  lineHeight: 1.3,
-                  color: isDone ? ACCENT.todo : txtMuted,
-                }}>{i + 1}</span>
+                {etikett ? (
+                  <span style={{
+                    fontFamily: "Nunito, sans-serif", fontSize: Math.max(8, tileSize * 0.115),
+                    fontWeight: 800, lineHeight: 1.15, textAlign: "center",
+                    padding: "2px 4px 0", color: isDone ? ACCENT.todo : txtColor,
+                  }}>{etikett}</span>
+                ) : (
+                  <span style={{
+                    fontFamily: "Nunito, sans-serif", fontSize: numSize, fontWeight: 800,
+                    lineHeight: 1.3,
+                    color: isDone ? ACCENT.todo : txtMuted,
+                  }}>{i + 1}</span>
+                )}
               </button>
             )
           })}
@@ -6740,6 +6838,8 @@ export default function SmartHub({ session, household }) {
       household_id: householdId,
       title: c.title,
       day_icon: c.day_icon || "⭐",
+      day_icons: c.day_icons || [],
+      day_labels: c.day_labels || [],
       total_days: c.total_days || 7,
       completed_days: [],
       reward_text: c.reward_text || null,
@@ -6764,6 +6864,10 @@ export default function SmartHub({ session, household }) {
     const next = {
       title: patch.title ?? before.title,
       day_icon: patch.day_icon ?? before.day_icon,
+      // Arrayerna klipps till tavlans längd — annars ligger ikoner kvar för
+      // rutor som inte finns och dyker upp igen om man utökar tavlan senare.
+      day_icons: (patch.day_icons ?? before.day_icons ?? []).slice(0, total),
+      day_labels: (patch.day_labels ?? before.day_labels ?? []).slice(0, total),
       total_days: total,
       reward_text: patch.reward_text !== undefined ? patch.reward_text : before.reward_text,
       reward_icon: patch.reward_icon ?? before.reward_icon,
