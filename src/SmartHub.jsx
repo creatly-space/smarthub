@@ -8,6 +8,7 @@ import {
   Users, Lock, X, ChevronRight, ChevronLeft, User, LogOut, Sparkles,
   ThumbsUp, ThumbsDown, Grip, Copy, Trash2, Edit3, Mic, MapPin,
   Archive, ArchiveRestore, Search, Repeat, Bell, BellOff, ShoppingCart,
+  Music, Play, Pause, SkipBack, SkipForward, Heart,
 } from "lucide-react"
 import groceriesData from "./data/groceries.json"
 import {
@@ -4541,6 +4542,156 @@ function RewardChartsSection({ onBack, charts, onAdd, onUpdate, onDelete, onPin,
   )
 }
 
+// Kopplar hushållets Spotify och väljer de fyra spellistor som blir knappar på
+// väggen. Hela biblioteket vore oanvändbart på en touchskärm utan tangentbord
+// — fyra stora knappar är det som faktiskt går att trycka på i förbifarten.
+const SPOTIFY_MAX_LISTS = 4
+
+function SpotifySection({ onBack, householdId, tvSlots, onSaveTvSlots }) {
+  const [status, setStatus] = useState(null)
+  const [lists, setLists] = useState(null)
+  const [error, setError] = useState("")
+  const [working, setWorking] = useState(false)
+  const chosen = tvSlots?.spotifyPlaylists || []
+
+  const load = async () => {
+    setError("")
+    try {
+      const s = await spotifyCall(householdId, "status")
+      setStatus(s)
+      if (s?.connected) {
+        const r = await spotifyCall(householdId, "playlists")
+        setLists(r?.body?.items || [])
+      }
+    } catch (e) {
+      setError(e.message || "Kunde inte nå Spotify")
+      setStatus({ connected: false })
+    }
+  }
+  useEffect(() => { if (householdId) load() }, [householdId])
+
+  async function connect() {
+    setWorking(true)
+    setError("")
+    try {
+      const { url } = await spotifyCall(householdId, "login", { returnTo: window.location.origin })
+      window.location.href = url
+    } catch (e) {
+      setError(e.message || "Kunde inte starta inloggningen")
+      setWorking(false)
+    }
+  }
+
+  async function disconnect() {
+    setWorking(true)
+    try {
+      await spotifyCall(householdId, "disconnect")
+      setStatus({ connected: false })
+      setLists(null)
+    } catch (e) {
+      setError(e.message || "Kunde inte koppla bort")
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  function toggleList(pl) {
+    const has = chosen.some(c => c.uri === pl.uri)
+    const next = has
+      ? chosen.filter(c => c.uri !== pl.uri)
+      : chosen.length >= SPOTIFY_MAX_LISTS ? chosen : [...chosen, { uri: pl.uri, name: pl.name }]
+    onSaveTvSlots({ ...(tvSlots || {}), spotifyPlaylists: next })
+  }
+
+  return (
+    <div>
+      <SectionHeader title="Spotify" onBack={onBack} />
+
+      <Card style={{ marginBottom: 12 }}>
+        <div style={{ padding: 16 }}>
+          {status === null ? (
+            <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, color: t.textSec }}>Kollar…</div>
+          ) : status.connected ? (
+            <>
+              <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 800, color: t.text }}>
+                ✓ Kopplat{status.display_name ? ` som ${status.display_name}` : ""}
+              </div>
+              <p style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textSec, margin: "4px 0 12px" }}>
+                Väggen styr det här kontot. Något måste redan spela någonstans — SmartHub startar inte ljudet själv.
+              </p>
+              <button onClick={disconnect} disabled={working} style={{
+                background: "transparent", border: `1px solid ${t.inputBorder}`, borderRadius: 10,
+                padding: "10px 16px", cursor: "pointer",
+                fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 700, color: "#dc2626",
+              }}>Koppla bort</button>
+            </>
+          ) : (
+            <>
+              <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 800, color: t.text }}>
+                Inte kopplat
+              </div>
+              <p style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textSec, margin: "4px 0 12px" }}>
+                Kräver Spotify Premium. Kontot du loggar in med är det väggen styr.
+              </p>
+              <button onClick={connect} disabled={working} style={{
+                background: "#1db954", border: "none", borderRadius: 10,
+                padding: "12px 18px", cursor: "pointer",
+                fontFamily: "Nunito, sans-serif", fontSize: 14, fontWeight: 800, color: "#07210f",
+              }}>{working ? "Öppnar…" : "Koppla Spotify"}</button>
+            </>
+          )}
+          {error && (
+            <p style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: "#dc2626", margin: "10px 0 0" }}>{error}</p>
+          )}
+        </div>
+      </Card>
+
+      {status?.connected && (
+        <Card>
+          <div style={{ padding: 16 }}>
+            <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 800, color: t.text }}>
+              Spellistor på väggen
+            </div>
+            <p style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textSec, margin: "4px 0 12px" }}>
+              Välj upp till {SPOTIFY_MAX_LISTS} stycken. De blir knappar i widgeten. {chosen.length}/{SPOTIFY_MAX_LISTS} valda.
+            </p>
+            {lists === null ? (
+              <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, color: t.textSec }}>Hämtar…</div>
+            ) : lists.length === 0 ? (
+              <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, color: t.textSec }}>Inga spellistor hittades.</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {lists.map(pl => {
+                  const active = chosen.some(c => c.uri === pl.uri)
+                  const full = !active && chosen.length >= SPOTIFY_MAX_LISTS
+                  return (
+                    <button key={pl.uri} onClick={() => toggleList(pl)} disabled={full} style={{
+                      display: "flex", alignItems: "center", gap: 10,
+                      padding: "12px 14px", borderRadius: 11,
+                      background: active ? "#1db95414" : t.inputBg,
+                      border: active ? "2px solid #1db954" : "2px solid transparent",
+                      cursor: full ? "default" : "pointer",
+                      opacity: full ? 0.45 : 1,
+                      fontFamily: "Nunito, sans-serif", textAlign: "left",
+                    }}>
+                      <Music size={17} color={active ? "#1db954" : t.textMuted} />
+                      <span style={{
+                        fontSize: 13, fontWeight: 700, color: t.text, minWidth: 0,
+                        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                      }}>{pl.name}</span>
+                      {active && <Check size={15} color="#1db954" style={{ marginLeft: "auto", flexShrink: 0 }} />}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+    </div>
+  )
+}
+
 function SettingsTab({ isMobile, session, household, members, foodPrefs, setFoodPrefs, onCreateInvite, tvData, tvSlots, onSaveTvSlots, tvPhotoUrl, onSaveTvPhoto, onUploadTvPhoto, userId, themeColor, setThemeColor, displayName, onSaveDisplayName, pushStatus, onEnablePush, onDisablePush, mobileTheme, tvTheme, onSetMobileTheme, onSetTvTheme, rewardCharts, onAddRewardChart, onUpdateRewardChart, onDeleteRewardChart, onPinRewardChart, onResetRewardChart }) {
   const [activeSection, setActiveSection] = useState(null)
   const sections = [
@@ -4548,6 +4699,7 @@ function SettingsTab({ isMobile, session, household, members, foodPrefs, setFood
     { id: "theme", icon: Sparkles, label: "Färgtema", desc: "Tema för mobilen och köks-TV:n" },
     { id: "reward", icon: Check, label: "Belöningstavlor", desc: "Dagar att bocka av på TV:n" },
     { id: "tv", icon: Monitor, label: "TV-editor", desc: "Anpassa TV-vyn, widgets & layout" },
+    { id: "spotify", icon: Music, label: "Spotify", desc: "Koppla konto, välj spellistor" },
     { id: "household", icon: Users, label: "Hushåll & Medlemmar", desc: "Invite-kod, medlemmar" },
     { id: "food", icon: UtensilsCrossed, label: "Matpreferenser", desc: "Gillar, gillar inte, budget" },
     { id: "account", icon: LogOut, label: "Konto", desc: "Logga ut" },
@@ -4556,6 +4708,7 @@ function SettingsTab({ isMobile, session, household, members, foodPrefs, setFood
   if (activeSection === "profile") return <ProfileSection onBack={() => setActiveSection(null)} session={session} themeColor={themeColor} setThemeColor={setThemeColor} displayName={displayName} onSaveDisplayName={onSaveDisplayName} pushStatus={pushStatus} onEnablePush={onEnablePush} onDisablePush={onDisablePush} />
   if (activeSection === "theme") return <ThemeSection onBack={() => setActiveSection(null)} mobileTheme={mobileTheme} tvTheme={tvTheme} onSetMobileTheme={onSetMobileTheme} onSetTvTheme={onSetTvTheme} />
   if (activeSection === "reward") return <RewardChartsSection onBack={() => setActiveSection(null)} charts={rewardCharts || []} onAdd={onAddRewardChart} onUpdate={onUpdateRewardChart} onDelete={onDeleteRewardChart} onPin={onPinRewardChart} onReset={onResetRewardChart} />
+  if (activeSection === "spotify") return <SpotifySection onBack={() => setActiveSection(null)} householdId={household?.id} tvSlots={tvSlots} onSaveTvSlots={onSaveTvSlots} />
   if (activeSection === "household") return <HouseholdSection onBack={() => setActiveSection(null)} household={household} members={members} userId={userId} onCreateInvite={onCreateInvite} />
   if (activeSection === "food") return <FoodPrefsSection onBack={() => setActiveSection(null)} foodPrefs={foodPrefs} setFoodPrefs={setFoodPrefs} />
   if (activeSection === "account") return <AccountSection onBack={() => setActiveSection(null)} />
@@ -5462,6 +5615,7 @@ function getTvSlotOptions() {
     { id: "events",    label: "Dagens händelser", color: ACCENT.event, icon: CalendarDays },
     { id: "countdown", label: "Nedräkning", color: "#db2777", icon: Sparkles },
     { id: "reward",    label: "Belöningstavla", color: ACCENT.todo, icon: Check },
+    { id: "spotify",   label: "Spotify",  color: "#1db954",       icon: Music },
     { id: "empty",     label: "Tom",      color: "#94a3b8",       icon: X },
   ]
 }
@@ -5550,8 +5704,180 @@ function renderTvSlotWidget(type, p) {
   if (type === "events")   return <TvEventsCard events={p.calEvents} persons={p.persons} dark={p.dark} onEventTap={p.onEventTap} />
   if (type === "countdown") return <TvCountdownCard countdowns={p.countdowns} dark={p.dark} />
   if (type === "reward")   return <TvRewardChartCard charts={p.rewardCharts} onToggleDay={p.onToggleRewardDay} dark={p.dark} />
+  // active={!p.dark}: i nattläge slutar widgeten polla. Ingen tittar, och varje
+  // anrop kostar en edge-funktionsinvokation.
+  if (type === "spotify")  return <TvSpotifyCard householdId={p.householdId} playlists={p.spotifyPlaylists} dark={p.dark} active={!p.dark} />
   if (type === "empty")    return <div style={{ flex: 1, background: p.dark ? "rgba(255,255,255,0.04)" : t.inputBg, borderRadius: 14, border: `1px dashed ${p.dark ? "rgba(255,255,255,0.1)" : t.cardBorder}` }} />
   return null
+}
+
+// Spotify-widget för väggen. Den tilldelas vilken ruta som helst i TV-editorn,
+// och rutorna är olika stora — en bred botten är 508×300, en kvadrant 249×370.
+// Därför mäts höjden i stället för att gissas: spellisteknapparna och
+// tidslinjen fälls bort när de inte får plats, i stället för att klämmas ihop
+// tills allt blir oläsligt på avstånd.
+const SPOTIFY_ROOM_FOR_LISTS = 290
+const SPOTIFY_ROOM_FOR_BAR = 200
+
+function msToTime(ms) {
+  if (typeof ms !== "number" || ms < 0) return "0:00"
+  const s = Math.floor(ms / 1000)
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
+}
+
+function TvSpotifyCard({ householdId, playlists = [], dark, active = true }) {
+  const { playing, connected, command } = useSpotify(householdId, { active })
+  const boxRef = useRef(null)
+  const [size, setSize] = useState({ w: 0, h: 0 })
+
+  useLayoutEffect(() => {
+    const el = boxRef.current
+    if (!el || typeof ResizeObserver === "undefined") return
+    const measure = () => setSize({ w: el.clientWidth, h: el.clientHeight })
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  const text1 = dark ? "#e8eaf0" : t.text
+  const text2 = dark ? "rgba(255,255,255,0.65)" : t.textSec
+  const text3 = dark ? "rgba(255,255,255,0.35)" : t.textMuted
+  const edge = dark ? "rgba(255,255,255,0.12)" : t.cardBorder
+  const fill = dark ? "rgba(255,255,255,0.06)" : t.inputBg
+
+  const track = playing?.item
+  const isPlaying = !!playing?.is_playing
+  const art = track?.album?.images?.[0]?.url
+  const artists = (track?.artists || []).map(a => a.name).join(", ")
+
+  // Bred ruta: omslaget vid sidan av texten. Smal: omslaget över.
+  const wide = size.w > size.h * 1.1
+  const showLists = size.h >= SPOTIFY_ROOM_FOR_LISTS && playlists.length > 0
+  const showBar = size.h >= SPOTIFY_ROOM_FOR_BAR && !!track
+
+  const artSide = wide
+    ? Math.max(56, Math.min(size.h - 110, 120))
+    : Math.max(56, Math.min(size.w - 28, size.h * 0.42))
+
+  const progress = track?.duration_ms
+    ? Math.min(100, ((playing?.progress_ms || 0) / track.duration_ms) * 100)
+    : 0
+
+  const Btn = ({ onClick, children, big, label }) => (
+    <button
+      onClick={onClick}
+      aria-label={label}
+      style={{
+        width: big ? 56 : 40, height: big ? 56 : 40,
+        borderRadius: 999, flexShrink: 0,
+        border: big ? "none" : `1px solid ${edge}`,
+        background: big ? "#1db954" : fill,
+        color: big ? "#07210f" : text1,
+        display: "grid", placeItems: "center", cursor: "pointer", padding: 0,
+      }}
+    >{children}</button>
+  )
+
+  return (
+    <div ref={boxRef} style={{
+      flex: 1, minHeight: 0, minWidth: 0,
+      background: dark ? "rgba(255,255,255,0.06)" : "var(--sh-surface-soft, rgba(255,255,255,0.7))",
+      border: `1px solid ${edge}`, borderRadius: 14,
+      padding: 14, boxSizing: "border-box",
+      display: "flex", flexDirection: "column", gap: 11,
+      fontFamily: "Nunito, sans-serif", overflow: "hidden",
+    }}>
+      {connected === false ? (
+        <div style={{ margin: "auto", textAlign: "center", color: text2, fontSize: 13, fontWeight: 700, padding: 12 }}>
+          <Music size={26} color={text3} />
+          <div style={{ marginTop: 8 }}>Spotify är inte kopplat</div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: text3, marginTop: 4 }}>
+            Koppla i mobilen under Inställningar
+          </div>
+        </div>
+      ) : !track ? (
+        <div style={{ margin: "auto", textAlign: "center", color: text3, fontSize: 13, fontWeight: 700 }}>
+          <Music size={26} color={text3} />
+          <div style={{ marginTop: 8 }}>Inget spelas</div>
+        </div>
+      ) : (
+        <>
+          <div style={{
+            display: "flex", gap: 13, minWidth: 0,
+            flexDirection: wide ? "row" : "column",
+            alignItems: wide ? "center" : "stretch",
+          }}>
+            <div style={{
+              width: wide ? artSide : "100%",
+              height: wide ? artSide : undefined,
+              aspectRatio: wide ? undefined : "1",
+              maxHeight: wide ? undefined : artSide,
+              borderRadius: 10, flexShrink: 0,
+              background: art ? `center/cover url("${art}")` : fill,
+              display: art ? undefined : "grid", placeItems: "center",
+            }}>{!art && <Music size={28} color={text3} />}</div>
+
+            {/* textAlign sätts uttryckligen: TV-rutorna ärver centrering från
+                sina containrar, och då hamnar låttiteln mitt i tomrummet. */}
+            <div style={{ minWidth: 0, flex: 1, textAlign: "left" }}>
+              <div style={{
+                fontSize: wide ? 19 : 15, fontWeight: 800, color: text1,
+                letterSpacing: "-0.01em",
+                whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+              }}>{track.name}</div>
+              <div style={{
+                fontSize: wide ? 13 : 12, fontWeight: 600, color: text2, marginTop: 2,
+                whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+              }}>{artists}</div>
+
+              {showBar && (
+                <>
+                  <div style={{ height: 4, borderRadius: 99, background: edge, marginTop: 10, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${progress}%`, background: "#1db954", borderRadius: 99 }} />
+                  </div>
+                  <div style={{
+                    display: "flex", justifyContent: "space-between", marginTop: 4,
+                    fontSize: 10, fontWeight: 700, color: text3, fontVariantNumeric: "tabular-nums",
+                  }}>
+                    <span>{msToTime(playing?.progress_ms)}</span>
+                    <span>{msToTime(track.duration_ms)}</span>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16 }}>
+            <Btn onClick={() => command("previous")} label="Föregående"><SkipBack size={17} /></Btn>
+            <Btn big onClick={() => command(isPlaying ? "pause" : "play")} label={isPlaying ? "Pausa" : "Spela"}>
+              {isPlaying ? <Pause size={22} fill="currentColor" /> : <Play size={22} fill="currentColor" />}
+            </Btn>
+            <Btn onClick={() => command("next")} label="Nästa"><SkipForward size={17} /></Btn>
+          </div>
+
+          {showLists && (
+            <div style={{ display: "flex", gap: 7, marginTop: "auto" }}>
+              {playlists.slice(0, 4).map(pl => (
+                <button
+                  key={pl.uri}
+                  onClick={() => command("play", { context: pl.uri })}
+                  style={{
+                    flex: 1, minWidth: 0,
+                    background: fill, border: `1px solid ${edge}`, borderRadius: 9,
+                    padding: "8px 6px", cursor: "pointer",
+                    fontFamily: "Nunito, sans-serif",
+                    fontSize: 10.5, fontWeight: 800, color: text2,
+                    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                  }}
+                >{pl.name}</button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
 }
 
 // Belöningstavla för väggskärmen. Barnet trycker själv på en dag när den är
@@ -5935,7 +6261,7 @@ function TvLayoutGrid({ layoutKey, slots, widgetProps, slotOverlay }) {
   )
 }
 
-function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, weather, slots, slotOverlay, onDayClick, photoUrl, countdowns, shoppingItems, onAddShoppingItem, onToggleShoppingItem, dark, userId, onQuickEditEvent, onDeleteEvent, rewardCharts, onToggleRewardDay }) {
+function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal, weather, slots, slotOverlay, onDayClick, photoUrl, countdowns, shoppingItems, onAddShoppingItem, onToggleShoppingItem, dark, userId, onQuickEditEvent, onDeleteEvent, rewardCharts, onToggleRewardDay, householdId }) {
   const s = { ...DEFAULT_TV_SLOTS, ...(slots || {}) }
   const layoutKey = s.layout || "standard"
   // Popovern håller bara id:t och slår upp eventet i calEvents, så att den
@@ -5947,6 +6273,10 @@ function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWe
     persons, calEvents, pinnedList, onToggleItem, mealsByWeekday, mealTagsLocal,
     onDayClick, countdowns, shoppingItems, onAddShoppingItem, onToggleShoppingItem, dark,
     rewardCharts, onToggleRewardDay,
+    householdId,
+    // Favoritspellistorna sparas i tv_layouts.slots, inte i en egen kolumn:
+    // de är TV-konfiguration precis som widgetvalen, och slots är redan jsonb.
+    spotifyPlaylists: s.spotifyPlaylists || [],
     onEventTap: onQuickEditEvent ? (ev => setPopoverId(ev.id)) : undefined,
   }
 
@@ -6113,6 +6443,79 @@ function TvLayout({ tvTheme, onSetTvTheme, ...props }) {
       </div>
     </div>
   )
+}
+
+// ── Spotify ──
+// Klienten rör aldrig Spotify själv. Allt går via edge-funktionen `spotify`,
+// som håller hushållets tokens — se supabase/functions/spotify/index.ts.
+async function spotifyCall(householdId, action, extra = {}) {
+  const { data, error } = await supabase.functions.invoke("spotify", {
+    body: { action, household: householdId, ...extra },
+  })
+  if (error) throw new Error(error.message || "Spotify svarade inte")
+  return data
+}
+
+// Spotify har ingen webhook för uppspelning, så nu-spelas måste hämtas om och
+// om igen. Var femte sekund hade blivit en halv miljon anrop i månaden och
+// sprängt Supabases gratisgräns, så takten följer vad som faktiskt händer:
+// tätt när musik spelar, glest när det är tyst, inget alls i nattläge.
+const SPOTIFY_POLL_PLAYING_MS = 10000
+const SPOTIFY_POLL_IDLE_MS = 30000
+
+function useSpotify(householdId, { active = true } = {}) {
+  const [playing, setPlaying] = useState(null)
+  const [connected, setConnected] = useState(null) // null = vet inte än
+  const [busy, setBusy] = useState(false)
+  const timer = useRef(null)
+
+  const refresh = async () => {
+    if (!householdId) return
+    try {
+      const data = await spotifyCall(householdId, "state")
+      setConnected(data?.connected !== false)
+      setPlaying(data?.playing ?? null)
+    } catch {
+      // Nätverksglapp eller en funktion som inte deployats än — behåll det vi
+      // redan visar i stället för att blinka till tomt.
+    }
+  }
+
+  useEffect(() => {
+    if (!householdId || !active) {
+      if (timer.current) clearTimeout(timer.current)
+      return
+    }
+    let stopped = false
+    const tick = async () => {
+      if (stopped) return
+      if (!document.hidden) await refresh()
+      if (stopped) return
+      timer.current = setTimeout(tick, playing?.is_playing ? SPOTIFY_POLL_PLAYING_MS : SPOTIFY_POLL_IDLE_MS)
+    }
+    tick()
+    return () => { stopped = true; if (timer.current) clearTimeout(timer.current) }
+    // playing?.is_playing styr takten, därför ligger den i beroendena
+  }, [householdId, active, playing?.is_playing])
+
+  // Spotify hinner inte alltid uppdatera sitt eget tillstånd direkt efter ett
+  // kommando, så vi gissar rätt lokalt och hämtar sanningen strax efter.
+  const command = async (action, extra) => {
+    if (!householdId || busy) return
+    setBusy(true)
+    try {
+      if (action === "pause") setPlaying(p => p ? { ...p, is_playing: false } : p)
+      if (action === "play") setPlaying(p => p ? { ...p, is_playing: true } : p)
+      await spotifyCall(householdId, action, extra)
+      setTimeout(refresh, 600)
+    } catch {
+      refresh()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return { playing, connected, busy, refresh, command }
 }
 
 // Mood-knappen på väggen. Hopfälld är den bara en liten prick i nedre vänstra
@@ -7462,6 +7865,7 @@ export default function SmartHub({ session, household }) {
           onDeleteEvent={handleDeleteEvent}
           tvTheme={tvTheme}
           onSetTvTheme={handleSetTvTheme}
+          householdId={householdId}
         />
         {liftedModals}
       </>

@@ -235,6 +235,62 @@ const DEMO_SESSION = {
   access_token: "demo",
 }
 
+// Spotify i demoläget. Ett påhittat spår som tickar vidare, så att widgeten går
+// att visa och trycka på utan ett riktigt Spotify-konto.
+const DEMO_SPOTIFY = {
+  startedAt: Date.now(),
+  is_playing: true,
+  item: {
+    id: "demo-track",
+    name: "Vi är bara barn",
+    duration_ms: 252000,
+    artists: [{ name: "Håkan Hellström" }],
+    album: { images: [] },
+  },
+}
+
+function demoSpotify(body) {
+  const { action } = body || {}
+  if (action === "status") {
+    return Promise.resolve({ data: { connected: true, display_name: "Demohemmet" }, error: null })
+  }
+  if (action === "playlists") {
+    return Promise.resolve({
+      data: {
+        ok: true,
+        body: {
+          items: [
+            { uri: "spotify:playlist:demo1", name: "Frukost" },
+            { uri: "spotify:playlist:demo2", name: "Barnen" },
+            { uri: "spotify:playlist:demo3", name: "Middag" },
+            { uri: "spotify:playlist:demo4", name: "Städa" },
+            { uri: "spotify:playlist:demo5", name: "Lugnt" },
+          ],
+        },
+      },
+      error: null,
+    })
+  }
+  if (action === "state") {
+    const elapsed = DEMO_SPOTIFY.is_playing ? Date.now() - DEMO_SPOTIFY.startedAt : 0
+    return Promise.resolve({
+      data: {
+        connected: true,
+        playing: {
+          is_playing: DEMO_SPOTIFY.is_playing,
+          progress_ms: elapsed % DEMO_SPOTIFY.item.duration_ms,
+          item: DEMO_SPOTIFY.item,
+        },
+      },
+      error: null,
+    })
+  }
+  if (action === "pause") DEMO_SPOTIFY.is_playing = false
+  if (action === "play") DEMO_SPOTIFY.is_playing = true
+  if (action === "next" || action === "previous") DEMO_SPOTIFY.startedAt = Date.now()
+  return Promise.resolve({ data: { ok: true }, error: null })
+}
+
 export function createDemoClient() {
   return {
     from: table => makeQuery(table),
@@ -255,7 +311,7 @@ export function createDemoClient() {
       signOut: () => Promise.resolve({ error: null }),
     },
     functions: {
-      invoke: (name) => {
+      invoke: (name, opts) => {
         if (name === "ai-chat") {
           return Promise.resolve({
             data: {
@@ -265,6 +321,7 @@ export function createDemoClient() {
             error: null,
           })
         }
+        if (name === "spotify") return demoSpotify(opts?.body || {})
         return Promise.resolve({ data: null, error: { message: "Avstängt i demoläget" } })
       },
     },
