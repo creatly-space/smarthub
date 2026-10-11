@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Supabase-nycklar. .env.local fångas redan av *.local ovan, men .env gjorde
+# det inte — och en anon-nyckel i repot är inte värt risken.
+.env
+.env.*
