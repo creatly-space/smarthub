@@ -5726,9 +5726,10 @@ function msToTime(ms) {
 }
 
 function TvSpotifyCard({ householdId, playlists = [], dark, active = true }) {
-  const { playing, connected, command } = useSpotify(householdId, { active })
+  const { playing, connected, command, startContext } = useSpotify(householdId, { active })
   const boxRef = useRef(null)
   const [size, setSize] = useState({ w: 0, h: 0 })
+  const [hint, setHint] = useState("")
 
   useLayoutEffect(() => {
     const el = boxRef.current
@@ -5797,9 +5798,34 @@ function TvSpotifyCard({ householdId, playlists = [], dark, active = true }) {
           </div>
         </div>
       ) : !track ? (
-        <div style={{ margin: "auto", textAlign: "center", color: text3, fontSize: 13, fontWeight: 700 }}>
-          <Music size={26} color={text3} />
-          <div style={{ marginTop: 8 }}>Inget spelas</div>
+        // Tomt läge är det normala på en vägg — Spotify släcker enheten efter
+        // en stunds paus. Spellistorna ligger kvar här, annars finns det inget
+        // sätt att starta musik från köket utan att ta fram mobilen.
+        <div style={{ margin: "auto", textAlign: "center", width: "100%", padding: "4px 0" }}>
+          <Music size={24} color={text3} />
+          <div style={{ color: text3, fontSize: 13, fontWeight: 700, marginTop: 6 }}>Inget spelas</div>
+          {hint && (
+            <div style={{ color: text2, fontSize: 10.5, fontWeight: 600, marginTop: 6, lineHeight: 1.4 }}>{hint}</div>
+          )}
+          {playlists.length > 0 && (
+            <div style={{
+              display: "flex", flexWrap: "wrap", gap: 6, marginTop: 11, justifyContent: "center",
+            }}>
+              {playlists.slice(0, 4).map(pl => (
+                <button
+                  key={pl.uri}
+                  onClick={async () => setHint(await startContext(pl.uri) || "")}
+                  style={{
+                    background: fill, border: `1px solid ${edge}`, borderRadius: 9,
+                    padding: "9px 12px", cursor: "pointer",
+                    fontFamily: "Nunito, sans-serif",
+                    fontSize: 11, fontWeight: 800, color: text1,
+                    maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                  }}
+                >▶ {pl.name}</button>
+              ))}
+            </div>
+          )}
         </div>
       ) : (
         <>
@@ -5808,11 +5834,12 @@ function TvSpotifyCard({ householdId, playlists = [], dark, active = true }) {
             flexDirection: wide ? "row" : "column",
             alignItems: wide ? "center" : "stretch",
           }}>
+            {/* Kvadrat i båda lägena. Tidigare sattes aspect-ratio ihop med
+                max-height, vilket lämnade bredden på 100% medan höjden kaptes
+                — och då beskar cover bort halva skivomslaget. */}
             <div style={{
-              width: wide ? artSide : "100%",
-              height: wide ? artSide : undefined,
-              aspectRatio: wide ? undefined : "1",
-              maxHeight: wide ? undefined : artSide,
+              width: artSide, height: artSide,
+              marginInline: wide ? undefined : "auto",
               borderRadius: 10, flexShrink: 0,
               background: art ? `center/cover url("${art}")` : fill,
               display: art ? undefined : "grid", placeItems: "center",
@@ -5861,7 +5888,7 @@ function TvSpotifyCard({ householdId, playlists = [], dark, active = true }) {
               {playlists.slice(0, 4).map(pl => (
                 <button
                   key={pl.uri}
-                  onClick={() => command("play", { context: pl.uri })}
+                  onClick={async () => setHint(await startContext(pl.uri) || "")}
                   style={{
                     flex: 1, minWidth: 0,
                     background: fill, border: `1px solid ${edge}`, borderRadius: 9,
@@ -6463,18 +6490,36 @@ async function spotifyCall(householdId, action, extra = {}) {
 const SPOTIFY_POLL_PLAYING_MS = 10000
 const SPOTIFY_POLL_IDLE_MS = 30000
 
+// Spotify svarar 204 No Content så fort ingen enhet är aktiv — och en enhet
+// somnar redan av en paus, eller av ett glapp mitt i en låt. Tas varje sådant
+// svar som "inget spelas" blinkar kortet bort låten och tillbaka igen.
+// Därför krävs två tomma svar i rad innan vi tömmer kortet.
+const SPOTIFY_EMPTY_BEFORE_IDLE = 2
+
 function useSpotify(householdId, { active = true } = {}) {
   const [playing, setPlaying] = useState(null)
   const [connected, setConnected] = useState(null) // null = vet inte än
   const [busy, setBusy] = useState(false)
   const timer = useRef(null)
+  const emptyRuns = useRef(0)
+  // Takten läses ur en ref i stället för ur state, så att effekten inte
+  // behöver startas om varje gång någon pausar.
+  const playingRef = useRef(false)
 
   const refresh = async () => {
     if (!householdId) return
     try {
       const data = await spotifyCall(householdId, "state")
       setConnected(data?.connected !== false)
-      setPlaying(data?.playing ?? null)
+      const next = data?.playing ?? null
+      if (next) {
+        emptyRuns.current = 0
+        playingRef.current = !!next.is_playing
+        setPlaying(next)
+      } else if (++emptyRuns.current >= SPOTIFY_EMPTY_BEFORE_IDLE) {
+        playingRef.current = false
+        setPlaying(null)
+      }
     } catch {
       // Nätverksglapp eller en funktion som inte deployats än — behåll det vi
       // redan visar i stället för att blinka till tomt.
@@ -6491,12 +6536,11 @@ function useSpotify(householdId, { active = true } = {}) {
       if (stopped) return
       if (!document.hidden) await refresh()
       if (stopped) return
-      timer.current = setTimeout(tick, playing?.is_playing ? SPOTIFY_POLL_PLAYING_MS : SPOTIFY_POLL_IDLE_MS)
+      timer.current = setTimeout(tick, playingRef.current ? SPOTIFY_POLL_PLAYING_MS : SPOTIFY_POLL_IDLE_MS)
     }
     tick()
     return () => { stopped = true; if (timer.current) clearTimeout(timer.current) }
-    // playing?.is_playing styr takten, därför ligger den i beroendena
-  }, [householdId, active, playing?.is_playing])
+  }, [householdId, active])
 
   // Spotify hinner inte alltid uppdatera sitt eget tillstånd direkt efter ett
   // kommando, så vi gissar rätt lokalt och hämtar sanningen strax efter.
@@ -6515,7 +6559,34 @@ function useSpotify(householdId, { active = true } = {}) {
     }
   }
 
-  return { playing, connected, busy, refresh, command }
+  // Startar en spellista. Spotify vägrar spela om ingen enhet är aktiv, och en
+  // enhet slutar vara aktiv så fort den varit pausad en stund — så det normala
+  // läget på en vägg är just "ingen aktiv enhet". Därför letar vi upp en enhet
+  // och flyttar uppspelningen dit först, i stället för att bara misslyckas.
+  const startContext = async (uri) => {
+    if (!householdId || busy) return null
+    setBusy(true)
+    try {
+      const first = await spotifyCall(householdId, "play", { context: uri })
+      if (first?.ok) { setTimeout(refresh, 800); return null }
+
+      const list = await spotifyCall(householdId, "devices")
+      const devices = list?.body?.devices || []
+      if (devices.length === 0) return "Ingen högtalare är igång. Starta Spotify på en telefon eller högtalare först."
+
+      const target = devices.find(d => d.is_active) || devices[0]
+      await spotifyCall(householdId, "transfer", { device: target.id, play: false })
+      await spotifyCall(householdId, "play", { context: uri, device: target.id })
+      setTimeout(refresh, 800)
+      return null
+    } catch (e) {
+      return e.message || "Kunde inte starta"
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return { playing, connected, busy, refresh, command, startContext }
 }
 
 // Mood-knappen på väggen. Hopfälld är den bara en liten prick i nedre vänstra
@@ -6524,15 +6595,36 @@ function useSpotify(householdId, { active = true } = {}) {
 // den igen. Fäller också in sig själv efter en stund, så att skärmen aldrig
 // står öppen i det läget resten av kvällen.
 const MOOD_PANEL_TIMEOUT_MS = 12000
+const MOOD_REVEAL_MS = 6000
 
 function TvMoodButton({ current, onPick, dark }) {
   const [open, setOpen] = useState(false)
+  // Knappen är dold tills någon rör skärmen. Väggen är full — vilket hörn den
+  // än ställs i hamnar den ovanpå en widget, och den tog nästa-knappen i
+  // Spotify-kortet. Att visa den bara efter en beröring kostar varken yta
+  // eller tryckytor, och den som sträcker sig mot skärmen hittar den ändå.
+  const [visible, setVisible] = useState(false)
+  useEffect(() => {
+    let hide
+    const wake = () => {
+      setVisible(true)
+      clearTimeout(hide)
+      hide = setTimeout(() => { setVisible(false); setOpen(false) }, MOOD_REVEAL_MS)
+    }
+    const events = ["pointerdown", "touchstart"]
+    events.forEach(e => window.addEventListener(e, wake, { passive: true }))
+    return () => {
+      clearTimeout(hide)
+      events.forEach(e => window.removeEventListener(e, wake))
+    }
+  }, [])
+
   useEffect(() => {
     if (!open) return
     const i = setTimeout(() => setOpen(false), MOOD_PANEL_TIMEOUT_MS)
     return () => clearTimeout(i)
   }, [open, current])
-  if (!onPick) return null
+  if (!onPick || !visible) return null
 
   const shell = dark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.07)"
   const edge = dark ? "rgba(255,255,255,0.22)" : "rgba(0,0,0,0.12)"
