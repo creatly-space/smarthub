@@ -6121,8 +6121,11 @@ function TvMoodButton({ current, onPick, dark }) {
 
   return (
     <div style={{
-      position: "absolute", left: 12, bottom: 12, zIndex: 50,
+      // Höger hörn, inte vänster: demo-bannern sitter nere till vänster och
+      // täckte knappen helt i demoläget.
+      position: "absolute", right: 12, bottom: 12, zIndex: 50,
       display: "flex", alignItems: "center", gap: 6,
+      flexDirection: "row-reverse",
       fontFamily: "Nunito, sans-serif",
     }}>
       <button
