@@ -4597,9 +4597,13 @@ function SpotifySection({ onBack, householdId, tvSlots, onSaveTvSlots }) {
 
   function toggleList(pl) {
     const has = chosen.some(c => c.uri === pl.uri)
+    // Omslaget sparas med, annars hade väggen fått gå och hämta bilderna varje
+    // gång — och spellistorna byts nästan aldrig.
     const next = has
       ? chosen.filter(c => c.uri !== pl.uri)
-      : chosen.length >= SPOTIFY_MAX_LISTS ? chosen : [...chosen, { uri: pl.uri, name: pl.name }]
+      : chosen.length >= SPOTIFY_MAX_LISTS
+        ? chosen
+        : [...chosen, { uri: pl.uri, name: pl.name, image: pl.images?.[0]?.url || null }]
     onSaveTvSlots({ ...(tvSlots || {}), spotifyPlaylists: next })
   }
 
@@ -4674,7 +4678,13 @@ function SpotifySection({ onBack, householdId, tvSlots, onSaveTvSlots }) {
                       opacity: full ? 0.45 : 1,
                       fontFamily: "Nunito, sans-serif", textAlign: "left",
                     }}>
-                      <Music size={17} color={active ? "#1db954" : t.textMuted} />
+                      <span style={{
+                        width: 38, height: 38, borderRadius: 5, flexShrink: 0,
+                        background: pl.images?.[0]?.url
+                          ? `center/cover url("${pl.images[0].url}")`
+                          : t.inputBorder,
+                        display: "grid", placeItems: "center",
+                      }}>{!pl.images?.[0]?.url && <Music size={16} color={t.textMuted} />}</span>
                       <span style={{
                         fontSize: 13, fontWeight: 700, color: t.text, minWidth: 0,
                         whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
@@ -5719,6 +5729,47 @@ function renderTvSlotWidget(type, p) {
 const SPOTIFY_ROOM_FOR_LISTS = 290
 const SPOTIFY_ROOM_FOR_BAR = 200
 const showBarRoom = h => h >= SPOTIFY_ROOM_FOR_BAR
+// Två kolumner kräver en bred ruta. I en kvadrant blir varje bricka ~115 px,
+// och med omslaget borträknat återstår sjuttio pixlar text — då heter
+// spellistan "Working ..." och brickan slutar hjälpa.
+const SPOTIFY_TWO_COLS = 300
+// Medan musik spelar tar omslag, tidslinje och knappar nästan hela en smal
+// ruta. Spellistorna får plats i breda rutor, och i det tomma läget — som är
+// just när man vill välja något.
+const SPOTIFY_LISTS_WHILE_PLAYING_W = 300
+
+// Spellistebricka. Omslaget flush mot vänsterkanten utan egen marginal, som
+// Spotifys egna snabbgenvägar — det är den detaljen som gör att den läses som
+// en spellista och inte som vilken knapp som helst.
+function PlaylistTile({ pl, onPick, dark, cover = 38, font = 11.5 }) {
+  const text1 = dark ? "#e8eaf0" : t.text
+  const edge = dark ? "rgba(255,255,255,0.12)" : t.cardBorder
+  const fill = dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.045)"
+  return (
+    <button
+      onClick={() => onPick(pl)}
+      title={pl.name}
+      style={{
+        display: "flex", alignItems: "center", gap: 9,
+        background: fill, border: `1px solid ${edge}`,
+        borderRadius: 6, padding: 0, paddingRight: 10,
+        cursor: "pointer", overflow: "hidden",
+        minWidth: 0, flex: 1,
+        fontFamily: "Nunito, sans-serif", textAlign: "left",
+      }}
+    >
+      <span style={{
+        width: cover, height: cover, flexShrink: 0,
+        background: pl.image ? `center/cover url("${pl.image}")` : edge,
+        display: "grid", placeItems: "center",
+      }}>{!pl.image && <Music size={Math.round(cover * 0.45)} color={text1} opacity={0.5} />}</span>
+      <span style={{
+        fontSize: font, fontWeight: 800, color: text1, minWidth: 0,
+        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+      }}>{pl.name}</span>
+    </button>
+  )
+}
 
 function msToTime(ms) {
   if (typeof ms !== "number" || ms < 0) return "0:00"
@@ -5730,7 +5781,14 @@ function TvSpotifyCard({ householdId, playlists = [], dark, active = true }) {
   const { playing, connected, command, startContext } = useSpotify(householdId, { active })
   const boxRef = useRef(null)
   const [size, setSize] = useState({ w: 0, h: 0 })
+  // Återkoppling på ett tryck. Utan den går ett misslyckat försök inte att
+  // skilja från att skärmen hängt sig — vilket den såg ut att ha gjort.
   const [hint, setHint] = useState("")
+  useEffect(() => {
+    if (!hint) return
+    const i = setTimeout(() => setHint(""), 7000)
+    return () => clearTimeout(i)
+  }, [hint])
 
   useLayoutEffect(() => {
     const el = boxRef.current
@@ -5755,13 +5813,19 @@ function TvSpotifyCard({ householdId, playlists = [], dark, active = true }) {
 
   // Bred ruta: omslaget vid sidan av texten. Smal: omslaget över.
   const wide = size.w > size.h * 1.1
-  const showLists = size.h >= SPOTIFY_ROOM_FOR_LISTS && playlists.length > 0
+  const showLists = size.h >= SPOTIFY_ROOM_FOR_LISTS && size.w >= SPOTIFY_LISTS_WHILE_PLAYING_W && playlists.length > 0
   const showBar = size.h >= SPOTIFY_ROOM_FOR_BAR && !!track
 
   // Allt utom omslaget har en given höjd: text ~44, tidslinje ~26, knappar 56,
   // mellanrum och padding ~50. Omslaget får resten, i stället för en andel av
   // höjden som råkade sticka ut ur låga rutor.
-  const chrome = 44 + (showBarRoom(size.h) ? 26 : 0) + 56 + 50 + (size.h >= SPOTIFY_ROOM_FOR_LISTS ? 36 : 0)
+  // Spellistorna ligger i två rader om rutan är bred nog, annars fyra —
+  // brickorna är 30 höga plus mellanrum.
+  // showLists, inte bara höjden: annars reserveras plats åt spellistor som
+  // aldrig ritas, och omslaget krymper till förmån för ett tomrum.
+  const listRows = size.w >= SPOTIFY_TWO_COLS ? 2 : 4
+  const chrome = 44 + (showBarRoom(size.h) ? 26 : 0) + 56 + 50
+    + (showLists ? listRows * 36 : 0)
   const artSide = wide
     ? Math.max(56, Math.min(size.h - 110, 120))
     : Math.max(48, Math.min(size.w - 28, size.h - chrome))
@@ -5841,20 +5905,13 @@ function TvSpotifyCard({ householdId, playlists = [], dark, active = true }) {
           )}
           {playlists.length > 0 && (
             <div style={{
-              display: "flex", flexWrap: "wrap", gap: 6, marginTop: 11, justifyContent: "center",
+              display: "grid",
+              gridTemplateColumns: size.w >= SPOTIFY_TWO_COLS ? "1fr 1fr" : "1fr",
+              gap: 7, marginTop: 12, textAlign: "left",
             }}>
               {playlists.slice(0, 4).map(pl => (
-                <button
-                  key={pl.uri}
-                  onClick={async () => setHint(await startContext(pl.uri) || "")}
-                  style={{
-                    background: fill, border: `1px solid ${edge}`, borderRadius: 9,
-                    padding: "9px 12px", cursor: "pointer",
-                    fontFamily: "Nunito, sans-serif",
-                    fontSize: 11, fontWeight: 800, color: text1,
-                    maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                  }}
-                >▶ {pl.name}</button>
+                <PlaylistTile key={pl.uri} pl={pl} dark={dark}
+                  onPick={async p => setHint(await startContext(p.uri) || "")} />
               ))}
             </div>
           )}
@@ -5919,21 +5976,23 @@ function TvSpotifyCard({ householdId, playlists = [], dark, active = true }) {
           </div>
 
           {showLists && (
-            <div style={{ display: "flex", gap: 7, marginTop: "auto" }}>
-              {playlists.slice(0, 4).map(pl => (
-                <button
-                  key={pl.uri}
-                  onClick={async () => setHint(await startContext(pl.uri) || "")}
-                  style={{
-                    flex: 1, minWidth: 0,
-                    background: fill, border: `1px solid ${edge}`, borderRadius: 9,
-                    padding: "8px 6px", cursor: "pointer",
-                    fontFamily: "Nunito, sans-serif",
-                    fontSize: 10.5, fontWeight: 800, color: text2,
-                    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                  }}
-                >{pl.name}</button>
-              ))}
+            <div style={{ marginTop: "auto" }}>
+              {hint && (
+                <div style={{
+                  fontSize: 10, fontWeight: 700, color: text2,
+                  marginBottom: 6, lineHeight: 1.35, textAlign: "center",
+                }}>{hint}</div>
+              )}
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: size.w >= SPOTIFY_TWO_COLS ? "1fr 1fr" : "1fr",
+                gap: 6,
+              }}>
+                {playlists.slice(0, 4).map(pl => (
+                  <PlaylistTile key={pl.uri} pl={pl} dark={dark} cover={30} font={10.5}
+                    onPick={async p => setHint(await startContext(p.uri) || "")} />
+                ))}
+              </div>
             </div>
           )}
         </>
@@ -6600,21 +6659,32 @@ function useSpotify(householdId, { active = true } = {}) {
   // läget på en vägg är just "ingen aktiv enhet". Därför letar vi upp en enhet
   // och flyttar uppspelningen dit först, i stället för att bara misslyckas.
   const startContext = async (uri) => {
-    if (!householdId || busy) return null
+    if (!householdId || busy) return "Håller på…"
     setBusy(true)
     try {
-      const first = await spotifyCall(householdId, "play", { context: uri })
-      if (first?.ok) { setTimeout(refresh, 800); return null }
+      // Spelar det redan finns en aktiv enhet, och då räcker ett play.
+      // 202 betyder "mottaget", inte "spelar" — Spotify svarar så även när
+      // det inte finns någon enhet att spela på, och att tolka det som
+      // framgång var precis varför ett tryck inte gjorde någonting.
+      if (playingRef.current) {
+        const r = await spotifyCall(householdId, "play", { context: uri })
+        if (r?.ok && r.status !== 202) { setTimeout(refresh, 900); return "" }
+      }
 
       const list = await spotifyCall(householdId, "devices")
       const devices = list?.body?.devices || []
-      if (devices.length === 0) return "Ingen högtalare är igång. Starta Spotify på en telefon eller högtalare först."
+      if (devices.length === 0) {
+        return "Ingen högtalare syns. Öppna Spotify på mobilen eller högtalaren en gång, så dyker den upp här."
+      }
 
       const target = devices.find(d => d.is_active) || devices[0]
       await spotifyCall(householdId, "transfer", { device: target.id, play: false })
-      await spotifyCall(householdId, "play", { context: uri, device: target.id })
-      setTimeout(refresh, 800)
-      return null
+      const started = await spotifyCall(householdId, "play", { context: uri, device: target.id })
+      setTimeout(refresh, 1400)
+      if (!started?.ok) {
+        return `Spotify nekade: ${started?.body?.error?.message || started?.status || "okänt fel"}`
+      }
+      return `Startar på ${target.name}…`
     } catch (e) {
       return e.message || "Kunde inte starta"
     } finally {
