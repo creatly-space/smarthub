@@ -220,6 +220,17 @@ const t = {
 const ACCENT = { ...THEMES[DEFAULT_THEME].accents }
 // Byter aktivt tema. Muterar ACCENT på plats eftersom objektet är importerat
 // på hundratals ställen; anroparen renderar om så att de nya värdena syns.
+// Temats yta som genomskinlig rgba. TV:n lägger kort ovanpå en eventuell
+// fototapet och behöver därför en halvgenomskinlig variant av surface — men
+// den kan inte byggas med `${t.card}bb` som på andra ställen, eftersom t.card
+// är en CSS-variabel och inte en hex-kod.
+function softSurface(hex, alpha = 0.72) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex).trim())
+  if (!m) return null
+  const n = parseInt(m[1], 16)
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`
+}
+
 function applyTheme(themeId) {
   const theme = THEMES[themeId] || THEMES[DEFAULT_THEME]
   Object.assign(ACCENT, theme.accents)
@@ -228,6 +239,8 @@ function applyTheme(themeId) {
   for (const [token, varName] of Object.entries(THEME_VARS)) {
     root.setProperty(varName, theme.tokens[token])
   }
+  const soft = softSurface(theme.tokens.surface)
+  if (soft) root.setProperty("--sh-surface-soft", soft)
   for (const [name, color] of Object.entries(theme.accents)) {
     root.setProperty(`--sh-accent-${name}`, color)
   }
@@ -5942,7 +5955,10 @@ function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWe
   const tvText = dark ? "#e8eaf0" : t.text
   const tvTextSec = dark ? "rgba(255,255,255,0.65)" : t.textSec
   const tvTextMuted = dark ? "rgba(255,255,255,0.35)" : t.textMuted
-  const tvCardBg = dark ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.7)"
+  // Genomskinlig så att en eventuell fototapet syns igenom, men byggd på
+  // temats yta — inte hårdkodat vitt. Vitt gjorde att väderrutorna såg
+  // likadant gråvita ut i alla moods medan allt runtomkring bytte färg.
+  const tvCardBg = dark ? "rgba(255,255,255,0.06)" : `var(--sh-surface-soft, rgba(255,255,255,0.7))`
   const tvCardBorder = dark ? "rgba(255,255,255,0.1)" : t.cardBorder
   const photoOverlay = dark ? "rgba(10,11,20,0.65)" : "rgba(240,242,245,0.55)"
 
@@ -5991,7 +6007,7 @@ function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWe
               backdropFilter: dark ? "blur(8px)" : "none",
             }}>
               <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 10, fontWeight: 700, color: tvTextMuted, letterSpacing: "0.05em" }}>{f.day}</div>
-              <WmoIcon code={f.code} size={16} color={tvTextSec} />
+              <WmoIcon code={f.code} size={16} color={dark ? "#7dd3fc" : ACCENT.weather} />
               <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 11, fontWeight: 600, color: tvTextSec }}>{f.temp}</div>
             </div>
           ))}
