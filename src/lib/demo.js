@@ -242,9 +242,11 @@ const DEMO_SPOTIFY = {
   is_playing: true,
   item: {
     id: "demo-track",
-    name: "Vi är bara barn",
+    // Påhittad låt av påhittad artist, som resten av demot. En riktig artist
+    // här blir ett omdöme vi inte har bett om.
+    name: "Långsamma timmar",
     duration_ms: 252000,
-    artists: [{ name: "Håkan Hellström" }],
+    artists: [{ name: "Nattskiftet" }],
     // Ett påhittat omslag, så att widgetens bildytor och den suddiga
     // bakgrunden går att se i demot.
     album: {
