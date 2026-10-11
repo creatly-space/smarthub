@@ -11,7 +11,7 @@ import {
 } from "lucide-react"
 import groceriesData from "./data/groceries.json"
 import {
-  formatTime, formatDate, toISO, dayKey, todayKey, hourInTZ,
+  formatTime, formatDate, toISO, dayKey, todayKey, minutesInTZ,
   keyToDate, dateToKey as fmtDate, dayBounds,
 } from "./lib/time"
 import { startAutoUpdate } from "./lib/autoUpdate"
@@ -5931,18 +5931,22 @@ function TvViewContent({ persons, calEvents, pinnedList, onToggleItem, mealsByWe
   )
 }
 
-// Bestämmer om det är "natt" — dimmar TV-skärmen mellan 20:00 och 07:00.
-// Timmen läses i svensk tid, inte enhetens: på en UTC-ställd Pi hade skärmen
-// annars slagit om till nattläge klockan 22 och tillbaka klockan 09.
+// Bestämmer om det är "natt" — dimmar TV-skärmen mellan 18:30 och 08:00.
+// Tiden läses i svensk tid, inte enhetens: på en UTC-ställd Pi hade skärmen
+// annars slagit om till nattläge 20:30 och tillbaka klockan 10.
+const NIGHT_START_MIN = 18 * 60 + 30 // 18:30
+const NIGHT_END_MIN = 8 * 60         // 08:00
+
+function isNightAt(minutes) {
+  // Intervallet passerar midnatt, så det är en eller-jämförelse.
+  return minutes >= NIGHT_START_MIN || minutes < NIGHT_END_MIN
+}
+
 function useIsNightTime() {
-  const [isNight, setIsNight] = useState(() => {
-    const h = hourInTZ()
-    return h >= 20 || h < 7
-  })
+  const [isNight, setIsNight] = useState(() => isNightAt(minutesInTZ()))
   useEffect(() => {
     const i = setInterval(() => {
-      const h = hourInTZ()
-      setIsNight(h >= 20 || h < 7)
+      setIsNight(isNightAt(minutesInTZ()))
     }, 60000) // kollar varje minut
     return () => clearInterval(i)
   }, [])

@@ -76,6 +76,17 @@ export function hourInTZ(ts = new Date()) {
   return Number(getFormatter({ hour: "2-digit", hourCycle: "h23" }).format(d)) % 24
 }
 
+// Minuter sedan midnatt (0–1439) i svensk tid. Samma syfte som hourInTZ, men
+// för gränser som inte ligger på en hel timme — nattläget börjar 18:30.
+export function minutesInTZ(ts = new Date()) {
+  const d = toDate(ts)
+  if (!d) return 0
+  const parts = getFormatter({ hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
+    .formatToParts(d)
+  const get = type => Number(parts.find(p => p.type === type)?.value ?? 0)
+  return (get("hour") % 24) * 60 + get("minute")
+}
+
 // ── Skriva: svensk lokaltid → instant ──
 
 // Hur många ms svensk tid ligger före UTC vid en given instant (+2h sommar, +1h vinter).
