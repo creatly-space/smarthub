@@ -245,7 +245,21 @@ const DEMO_SPOTIFY = {
     name: "Vi är bara barn",
     duration_ms: 252000,
     artists: [{ name: "Håkan Hellström" }],
-    album: { images: [] },
+    // Ett påhittat omslag, så att widgetens bildytor och den suddiga
+    // bakgrunden går att se i demot.
+    album: {
+      images: [{
+        url: "data:image/svg+xml;utf8," + encodeURIComponent(
+          `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300">
+             <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+               <stop offset="0" stop-color="#7c2d12"/><stop offset="0.55" stop-color="#b45309"/>
+               <stop offset="1" stop-color="#f59e0b"/></linearGradient></defs>
+             <rect width="300" height="300" fill="url(#g)"/>
+             <circle cx="150" cy="150" r="62" fill="none" stroke="#fff" stroke-opacity="0.75" stroke-width="10"/>
+             <circle cx="150" cy="150" r="13" fill="#fff" fill-opacity="0.85"/>
+           </svg>`),
+      }],
+    },
   },
 }
 

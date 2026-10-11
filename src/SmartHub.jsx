@@ -5718,6 +5718,7 @@ function renderTvSlotWidget(type, p) {
 // tills allt blir oläsligt på avstånd.
 const SPOTIFY_ROOM_FOR_LISTS = 290
 const SPOTIFY_ROOM_FOR_BAR = 200
+const showBarRoom = h => h >= SPOTIFY_ROOM_FOR_BAR
 
 function msToTime(ms) {
   if (typeof ms !== "number" || ms < 0) return "0:00"
@@ -5757,9 +5758,13 @@ function TvSpotifyCard({ householdId, playlists = [], dark, active = true }) {
   const showLists = size.h >= SPOTIFY_ROOM_FOR_LISTS && playlists.length > 0
   const showBar = size.h >= SPOTIFY_ROOM_FOR_BAR && !!track
 
+  // Allt utom omslaget har en given höjd: text ~44, tidslinje ~26, knappar 56,
+  // mellanrum och padding ~50. Omslaget får resten, i stället för en andel av
+  // höjden som råkade sticka ut ur låga rutor.
+  const chrome = 44 + (showBarRoom(size.h) ? 26 : 0) + 56 + 50 + (size.h >= SPOTIFY_ROOM_FOR_LISTS ? 36 : 0)
   const artSide = wide
     ? Math.max(56, Math.min(size.h - 110, 120))
-    : Math.max(56, Math.min(size.w - 28, size.h * 0.42))
+    : Math.max(48, Math.min(size.w - 28, size.h - chrome))
 
   const progress = track?.duration_ms
     ? Math.min(100, ((playing?.progress_ms || 0) / track.duration_ms) * 100)
@@ -5788,7 +5793,34 @@ function TvSpotifyCard({ householdId, playlists = [], dark, active = true }) {
       padding: 14, boxSizing: "border-box",
       display: "flex", flexDirection: "column", gap: 11,
       fontFamily: "Nunito, sans-serif", overflow: "hidden",
+      position: "relative",
     }}>
+      {/* Skivomslaget igen, suddigt och svagt, som kortets bakgrund. Det är
+          enda bilden på hela väggen och ger kortet den färg som temat inte
+          kan ge — omslaget har ju sina egna färger. Scrimen ovanpå håller
+          texten läsbar oavsett hur ljust eller mörkt omslaget är. */}
+      {art && (
+        <>
+          <div aria-hidden style={{
+            position: "absolute", inset: -24,
+            background: `center/cover url("${art}")`,
+            filter: "blur(22px) saturate(1.3)",
+            opacity: dark ? 0.3 : 0.22,
+            pointerEvents: "none",
+          }} />
+          <div aria-hidden style={{
+            position: "absolute", inset: 0,
+            background: dark ? "rgba(10,11,20,0.42)" : "rgba(255,255,255,0.52)",
+            pointerEvents: "none",
+          }} />
+        </>
+      )}
+      {/* Innehållet behöver ligga i samma målningslager som bakgrunderna,
+          annars hamnar det under dem. */}
+      <div style={{
+        position: "relative", zIndex: 1, flex: 1, minHeight: 0,
+        display: "flex", flexDirection: "column", gap: 11,
+      }}>
       {connected === false ? (
         <div style={{ margin: "auto", textAlign: "center", color: text2, fontSize: 13, fontWeight: 700, padding: 12 }}>
           <Music size={26} color={text3} />
@@ -5845,9 +5877,12 @@ function TvSpotifyCard({ householdId, playlists = [], dark, active = true }) {
               display: art ? undefined : "grid", placeItems: "center",
             }}>{!art && <Music size={28} color={text3} />}</div>
 
-            {/* textAlign sätts uttryckligen: TV-rutorna ärver centrering från
+            {/* flex: 1 bara i liggande läge. I stående är föräldern en kolumn,
+                och då växer textblocket på höjden i stället för bredden —
+                vilket tryckte ut play-knappen under kortets underkant.
+                textAlign sätts uttryckligen: TV-rutorna ärver centrering från
                 sina containrar, och då hamnar låttiteln mitt i tomrummet. */}
-            <div style={{ minWidth: 0, flex: 1, textAlign: "left" }}>
+            <div style={{ minWidth: 0, flex: wide ? 1 : "none", textAlign: "left" }}>
               <div style={{
                 fontSize: wide ? 19 : 15, fontWeight: 800, color: text1,
                 letterSpacing: "-0.01em",
@@ -5903,6 +5938,7 @@ function TvSpotifyCard({ householdId, playlists = [], dark, active = true }) {
           )}
         </>
       )}
+      </div>
     </div>
   )
 }
