@@ -15,7 +15,6 @@ import {
   formatTime, formatDate, toISO, dayKey, todayKey, minutesInTZ,
   keyToDate, dateToKey as fmtDate, dayBounds,
 } from "./lib/time"
-import { startAutoUpdate } from "./lib/autoUpdate"
 
 // Plattlista över alla matvaror för fuzzy-matching, kategoriserad används för UI om vi vill
 const ALL_GROCERIES = (() => {
@@ -6857,14 +6856,6 @@ export default function SmartHub({ session, household }) {
     applyTheme(activeTheme)
     forceThemeRender(n => n + 1)
   }, [activeTheme])
-
-  // ── Automatisk uppdatering av kiosken ──
-  // Bara TV-läget. En telefon i handen laddar man om själv; väggskärmen har
-  // ingen som gör det, och stod därför kvar på gammal kod efter varje deploy.
-  useEffect(() => {
-    if (view !== "tv") return
-    return startAutoUpdate()
-  }, [view])
 
   // ── Data state (synced from Supabase, same shape as v10) ──
   const [lists, setLists] = useState([])

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase, IS_DEMO } from './lib/supabase'
+import { startAutoUpdate } from './lib/autoUpdate'
 import SmartHub from './SmartHub'
 import Login from './components/Login'
 import Onboarding from './components/Onboarding'
@@ -48,6 +49,20 @@ export default function App() {
   // skärmar — och den ena av dem får inte visas av misstag.
   const [householdFailed, setHouseholdFailed] = useState(false)
   const [retryTick, setRetryTick] = useState(0)
+
+  // ── Automatisk uppdatering av kiosken ──
+  // Ligger här och inte i SmartHub. Tidigare startades den inifrån appen, som
+  // bara renderas när hushållet laddats — så på inloggnings-, onboarding- och
+  // felskärmen kördes den aldrig. Alltså kunde väggen inte hämta den deploy
+  // som skulle laga den, precis när den var trasig. Här körs den oavsett
+  // vilken skärm som visas.
+  // Fortfarande bara TV-läget: en telefon i handen ska inte laddas om mitt i
+  // en inmatning, den laddar man om själv.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (new URLSearchParams(window.location.search).get('mode') !== 'tv') return
+    return startAutoUpdate()
+  }, [])
 
   useEffect(() => {
     // Utan catch:en fastnar väggen på "Laddar..." om nätet inte hunnit upp
