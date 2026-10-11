@@ -7,6 +7,11 @@ import Onboarding from './components/Onboarding'
 import LogoutButton from './components/LogoutButton'
 import DemoBanner from './components/DemoBanner'
 
+function isTvMode() {
+  if (typeof window === 'undefined') return false
+  return new URLSearchParams(window.location.search).get('mode') === 'tv'
+}
+
 // Visas när hushållet inte gick att hämta. Försöker om var tjugonde sekund av
 // sig själv — väggen har varken tangentbord eller någon som står bredvid.
 function RetryScreen({ onRetry }) {
@@ -59,8 +64,7 @@ export default function App() {
   // Fortfarande bara TV-läget: en telefon i handen ska inte laddas om mitt i
   // en inmatning, den laddar man om själv.
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (new URLSearchParams(window.location.search).get('mode') !== 'tv') return
+    if (!isTvMode()) return
     return startAutoUpdate()
   }, [])
 
@@ -175,9 +179,15 @@ export default function App() {
 
   return (
     <>
-      {/* I demoläget är utloggning meningslös — den leder bara till en
+      {/* Aldrig på väggen. Knappen är fixerad uppe i högra hörnet med vit text
+          på ljus bakgrund — i praktiken osynlig där, men fullt tryckbar, utan
+          bekräftelse och med direkt signOut(). På en touchskärm i knähöjd
+          räcker ett barnfinger för att logga ut hela hushållet, och väggen har
+          inget tangentbord att logga in med igen. Utloggning hör till mobilen.
+
+          I demoläget är den meningslös ändå — den leder till en
           inloggningsruta som demot inte har något konto till. */}
-      {IS_DEMO ? <DemoBanner /> : <LogoutButton />}
+      {IS_DEMO ? <DemoBanner /> : !isTvMode() && <LogoutButton />}
       <SmartHub session={session} household={household} />
     </>
   )
