@@ -1,5 +1,19 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, SUPABASE_URL } from '../lib/supabase'
+
+// "Failed to fetch" är allt webbläsaren säger när ett anrop aldrig kom fram,
+// och på en vägg utan tangentbord och utan devtools är det en återvändsgränd.
+// Den som står framför skärmen behöver veta vad som ska kontrolleras.
+function describeError(error) {
+  const msg = error?.message || String(error)
+  if (/failed to fetch|network|load failed/i.test(msg)) {
+    return `Nådde inte servern (${SUPABASE_URL || 'adress saknas i bygget'}). `
+      + 'Kontrollera att skärmen har nät, och att adressen ovan stämmer.'
+  }
+  if (/invalid login credentials/i.test(msg)) return 'Fel e-post eller lösenord.'
+  if (/email not confirmed/i.test(msg)) return 'Kontot är inte bekräftat — klicka på länken i mejlet först.'
+  return msg
+}
 
 // Läser ?invite=KOD från URL för att förfylla inbjudningskoden
 function getInviteFromUrl() {
@@ -52,7 +66,7 @@ export default function Login() {
         console.log('[Login] signUp response:', { data, error })
 
         if (error) {
-          showMessage('Kunde inte skapa konto: ' + error.message, 'error')
+          showMessage('Kunde inte skapa konto: ' + describeError(error), 'error')
           return
         }
         // Två fall:
@@ -74,7 +88,7 @@ export default function Login() {
         console.log('[Login] signIn response:', { data, error })
 
         if (error) {
-          showMessage('Kunde inte logga in: ' + error.message, 'error')
+          showMessage('Kunde inte logga in: ' + describeError(error), 'error')
           return
         }
         if (!data?.session) {
