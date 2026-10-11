@@ -68,6 +68,18 @@ hex-koder (nödvändigt eftersom många ytor bygger genomskinliga bakgrunder med
 komponenterna. Data-färger — personer, listor, events, mat-taggar — kommer ur
 fasta paletter och är avsiktligt inte tema-styrda.
 
+**Moods** är teman märkta `mood: true` och sparas i samma kolumn som temat
+(`households.tv_theme`, via `set_tv_theme`) — ingen egen tabell. De skiljer sig
+bara i hur de används: stämningsfulla i stället för neutrala, och de byts
+direkt på väggen via `TvMoodButton` i stället för i editorn. `PLAIN_THEME_IDS`
+filtrerar bort dem ur mobilens personliga temaväljare.
+
+Ett mood har också `nightSafe`. Nattläget (`useIsNightTime`, 18:30–08:00)
+lägger annars en hårdkodad mörk palett över hela TV-vyn, vilket hade gjort
+mörka kvällsmoods som Mys och Jul meningslösa — nattläget börjar ju precis när
+man vill ha dem. `nightSafe: true` betyder "redan mörk nog", och då hoppas
+nattlägets palett över. Ljusa moods dimmas som vanligt.
+
 ### Tabeller
 `households`, `household_members`, `todos`, `calendar_events`, `meals`,
 `layouts`, `devices`. RLS-helper: `is_household_member()`. Realtime publicerad

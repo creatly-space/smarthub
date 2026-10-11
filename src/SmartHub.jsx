@@ -118,6 +118,85 @@ const THEMES = {
     accents: { calendar: "#5b21b6", todo: "#065f46", meal: "#9a3412", event: "#1e3a8a", weather: "#075985" },
   },
 }
+
+// ── Moods ──
+// Ett mood är tekniskt samma sak som ett tema och sparas i samma kolumn
+// (households.tv_theme) — skillnaden är att moods är stämningsfulla snarare än
+// neutrala, och att de byts direkt på väggen i stället för i editorn. Därför
+// ligger de i THEMES, märkta med mood: true så att mobilens personliga
+// temaväljare kan filtrera bort dem.
+//
+// nightSafe betyder "redan mörk nog att visas som den är på natten". Nattläget
+// lägger annars en hårdkodad mörk palett över allt (se TvViewContent), vilket
+// hade gjort kvällsmoods meningslösa — nattläget börjar 18:30, alltså precis
+// när man vill ha dem.
+const MOODS = {
+  mys: {
+    label: "Mys", hint: "Varmt ljus, mörk botten", mood: true, nightSafe: true,
+    swatch: "#e8995e",
+    tokens: {
+      bg: "#1a1310", surface: "#251b16", border: "rgba(255,220,180,0.13)",
+      text1: "#f5e9dc", text2: "rgba(245,233,220,0.64)", text3: "rgba(245,233,220,0.36)",
+      line: "rgba(255,220,180,0.09)", inputBg: "rgba(255,220,180,0.05)", inputBorder: "rgba(255,220,180,0.16)",
+    },
+    accents: { calendar: "#f0a868", todo: "#c9a227", meal: "#e8995e", event: "#d98050", weather: "#8fb8c9" },
+  },
+  lugn: {
+    label: "Lugn", hint: "Ljus och sval", mood: true, nightSafe: false,
+    swatch: "#3b7ea1",
+    tokens: {
+      bg: "#eef4fa", surface: "#ffffff", border: "rgba(20,50,80,0.09)",
+      text1: "#11212f", text2: "rgba(17,33,47,0.60)", text3: "rgba(17,33,47,0.32)",
+      line: "rgba(20,50,80,0.06)", inputBg: "rgba(20,50,80,0.035)", inputBorder: "rgba(20,50,80,0.11)",
+    },
+    accents: { calendar: "#3b7ea1", todo: "#2f8f7d", meal: "#c2763a", event: "#2563a8", weather: "#0ea5c9" },
+  },
+  fest: {
+    label: "Fest", hint: "Lila och rosa", mood: true, nightSafe: true,
+    swatch: "#f472b6",
+    tokens: {
+      bg: "#1a0f26", surface: "#26173a", border: "rgba(255,200,255,0.15)",
+      text1: "#f6ecff", text2: "rgba(246,236,255,0.66)", text3: "rgba(246,236,255,0.36)",
+      line: "rgba(255,200,255,0.10)", inputBg: "rgba(255,200,255,0.06)", inputBorder: "rgba(255,200,255,0.18)",
+    },
+    accents: { calendar: "#c084fc", todo: "#4ade80", meal: "#fbbf24", event: "#f472b6", weather: "#38bdf8" },
+  },
+  fokus: {
+    label: "Fokus", hint: "Hög kontrast", mood: true, nightSafe: false,
+    swatch: "#1e3a8a",
+    tokens: {
+      bg: "#f4f6f8", surface: "#ffffff", border: "rgba(0,0,0,0.11)",
+      text1: "#0b1220", text2: "rgba(11,18,32,0.68)", text3: "rgba(11,18,32,0.38)",
+      line: "rgba(0,0,0,0.08)", inputBg: "rgba(0,0,0,0.03)", inputBorder: "rgba(0,0,0,0.14)",
+    },
+    accents: { calendar: "#5b21b6", todo: "#065f46", meal: "#9a3412", event: "#1e3a8a", weather: "#075985" },
+  },
+  jul: {
+    label: "Jul", hint: "Djupgrönt med guld", mood: true, nightSafe: true,
+    swatch: "#c89b3c",
+    tokens: {
+      bg: "#0e1f18", surface: "#162c22", border: "rgba(220,200,150,0.15)",
+      text1: "#eef6f0", text2: "rgba(238,246,240,0.64)", text3: "rgba(238,246,240,0.36)",
+      line: "rgba(220,200,150,0.10)", inputBg: "rgba(220,200,150,0.05)", inputBorder: "rgba(220,200,150,0.18)",
+    },
+    accents: { calendar: "#c89b3c", todo: "#4ade80", meal: "#e05252", event: "#d4af6a", weather: "#7fb8a8" },
+  },
+  sommar: {
+    label: "Sommar", hint: "Turkos och korall", mood: true, nightSafe: false,
+    swatch: "#0d9488",
+    tokens: {
+      bg: "#eefaf7", surface: "#ffffff", border: "rgba(0,70,65,0.10)",
+      text1: "#0a2420", text2: "rgba(10,36,32,0.62)", text3: "rgba(10,36,32,0.32)",
+      line: "rgba(0,70,65,0.06)", inputBg: "rgba(0,70,65,0.035)", inputBorder: "rgba(0,70,65,0.12)",
+    },
+    accents: { calendar: "#0d9488", todo: "#15803d", meal: "#ea580c", event: "#0369a1", weather: "#0891b2" },
+  },
+}
+Object.assign(THEMES, MOODS)
+const MOOD_IDS = Object.keys(MOODS)
+// Mobilens personliga temaväljare visar bara de neutrala temana.
+const PLAIN_THEME_IDS = Object.keys(THEMES).filter(id => !THEMES[id].mood)
+
 const DEFAULT_THEME = "default"
 // token → CSS-variabel
 const THEME_VARS = {
@@ -4133,11 +4212,15 @@ function ThemeSection({ onBack, mobileTheme, tvTheme, onSetMobileTheme, onSetTvT
       title: "Min mobil", icon: "📱",
       desc: "Gäller bara dig. Övriga i hushållet behåller sina egna val.",
       value: mobileTheme, onChange: onSetMobileTheme,
+      // Moods hör till väggen och byts där — de skulle bara röra till
+      // mobilens lista.
+      ids: PLAIN_THEME_IDS,
     },
     {
       title: "Köks-TV:n", icon: "🖥️",
-      desc: "Delas av hela hushållet och slår igenom på väggskärmen direkt.",
+      desc: "Delas av hela hushållet och slår igenom på väggskärmen direkt. Moods byts också direkt på skärmen, via pricken nere till vänster.",
       value: tvTheme, onChange: onSetTvTheme,
+      ids: Object.keys(THEMES),
     },
   ]
   return (
@@ -4149,8 +4232,8 @@ function ThemeSection({ onBack, mobileTheme, tvTheme, onSetMobileTheme, onSetTvT
             <div style={{ fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 800, color: t.text }}>{g.icon} {g.title}</div>
             <p style={{ fontFamily: "Nunito, sans-serif", fontSize: 12, color: t.textSec, margin: "4px 0 12px" }}>{g.desc}</p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {Object.entries(THEMES).map(([id, theme]) => (
-                <ThemeCard key={id} theme={theme} active={g.value === id} onClick={() => g.onChange(id)} />
+              {g.ids.map(id => (
+                <ThemeCard key={id} theme={THEMES[id]} active={g.value === id} onClick={() => g.onChange(id)} />
               ))}
             </div>
           </div>
@@ -5962,8 +6045,13 @@ function useIsNightTime() {
 // panel som inte försvann, en rotation som inte gick igenom — hamnade
 // underkanten utanför skärmen och todo- och matsedelskorten föll bort utan
 // att något såg trasigt ut i koden. Nu fyller vyn den yta som faktiskt finns.
-function TvLayout(props) {
+function TvLayout({ tvTheme, onSetTvTheme, ...props }) {
   const isNight = useIsNightTime()
+  // Ett mörkt mood är redan nattanpassat. Lägger vi nattlägets palett ovanpå
+  // blir Mys och Jul samma grågrönt som allt annat, och då finns det ingen
+  // anledning att ha valt dem.
+  const nightSafe = !!THEMES[tvTheme]?.nightSafe
+  const dark = isNight && !nightSafe
   const [viewport, setViewport] = useState(() => (
     typeof window === "undefined"
       ? { w: 1080, h: 1920 }
@@ -5994,8 +6082,8 @@ function TvLayout(props) {
         zoom: scale, transformOrigin: "top left",
         transition: "background 0.6s ease",
       }}>
-        <TvViewContent {...props} dark={isNight} />
-        {isNight && (
+        <TvViewContent {...props} dark={dark} />
+        {dark && (
           <div style={{
             position: "absolute", top: 12, right: 12, zIndex: 50,
             background: "rgba(255,255,255,0.08)", borderRadius: 8,
@@ -6005,7 +6093,75 @@ function TvLayout(props) {
             backdropFilter: "blur(8px)",
           }}>🌙 Nattläge</div>
         )}
+        <TvMoodButton current={tvTheme} onPick={onSetTvTheme} dark={dark || nightSafe} />
       </div>
+    </div>
+  )
+}
+
+// Mood-knappen på väggen. Hopfälld är den bara en liten prick i nedre vänstra
+// hörnet — väggen har ont om yta och en permanent rad med sex knappar hade
+// tagit plats från widgetarna. Ett tryck fäller ut raden, ett val fäller in
+// den igen. Fäller också in sig själv efter en stund, så att skärmen aldrig
+// står öppen i det läget resten av kvällen.
+const MOOD_PANEL_TIMEOUT_MS = 12000
+
+function TvMoodButton({ current, onPick, dark }) {
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    if (!open) return
+    const i = setTimeout(() => setOpen(false), MOOD_PANEL_TIMEOUT_MS)
+    return () => clearTimeout(i)
+  }, [open, current])
+  if (!onPick) return null
+
+  const shell = dark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.07)"
+  const edge = dark ? "rgba(255,255,255,0.22)" : "rgba(0,0,0,0.12)"
+  const active = THEMES[current]?.mood ? current : null
+
+  return (
+    <div style={{
+      position: "absolute", left: 12, bottom: 12, zIndex: 50,
+      display: "flex", alignItems: "center", gap: 6,
+      fontFamily: "Nunito, sans-serif",
+    }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        aria-label={open ? "Stäng moods" : "Välj mood"}
+        style={{
+          width: 34, height: 34, borderRadius: 999,
+          border: `1px solid ${edge}`,
+          background: active ? THEMES[active].swatch : shell,
+          backdropFilter: "blur(8px)",
+          cursor: "pointer", padding: 0, flexShrink: 0,
+          display: "grid", placeItems: "center",
+          fontSize: 15, lineHeight: 1,
+        }}
+      >{active ? "" : "🎨"}</button>
+
+      {open && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 6,
+          background: shell, backdropFilter: "blur(8px)",
+          border: `1px solid ${edge}`, borderRadius: 999,
+          padding: "5px 8px",
+        }}>
+          {MOOD_IDS.map(id => (
+            <button
+              key={id}
+              onClick={() => { onPick(id); setOpen(false) }}
+              aria-label={THEMES[id].label}
+              title={THEMES[id].label}
+              style={{
+                width: 28, height: 28, borderRadius: 999,
+                background: THEMES[id].swatch,
+                border: current === id ? `2px solid ${dark ? "#fff" : "#000"}` : `1px solid ${edge}`,
+                cursor: "pointer", padding: 0, flexShrink: 0,
+              }}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -7285,6 +7441,8 @@ export default function SmartHub({ session, household }) {
           onToggleRewardDay={handleToggleRewardDay}
           onQuickEditEvent={handleQuickEditEvent}
           onDeleteEvent={handleDeleteEvent}
+          tvTheme={tvTheme}
+          onSetTvTheme={handleSetTvTheme}
         />
         {liftedModals}
       </>
