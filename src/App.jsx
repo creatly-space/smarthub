@@ -14,7 +14,7 @@ function isTvMode() {
 
 // Visas när hushållet inte gick att hämta. Försöker om var tjugonde sekund av
 // sig själv — väggen har varken tangentbord eller någon som står bredvid.
-function RetryScreen({ onRetry }) {
+function RetryScreen({ onRetry, detail }) {
   useEffect(() => {
     const i = setInterval(onRetry, 20000)
     return () => clearInterval(i)
@@ -32,6 +32,17 @@ function RetryScreen({ onRetry }) {
       <div style={{ fontSize: 14, opacity: 0.65, maxWidth: 360, lineHeight: 1.5 }}>
         Hushållet gick inte att hämta. Försöker igen automatiskt.
       </div>
+      {/* Felet hör hemma på skärmen. Väggen har varken tangentbord eller
+          devtools, så loggar i konsolen når ingen — och utan dem blir
+          felsökningen gissningar. */}
+      {detail && (
+        <div style={{
+          fontSize: 12, opacity: 0.5, maxWidth: 420, lineHeight: 1.45,
+          fontFamily: 'ui-monospace, monospace', wordBreak: 'break-word',
+          border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8,
+          padding: '10px 12px',
+        }}>{detail}</div>
+      )}
       <button onClick={onRetry} style={{
         marginTop: 4,
         background: 'rgba(255,255,255,0.12)',
@@ -53,6 +64,7 @@ export default function App() {
   // hushåll" ser likadana ut i ett tomt svar, men leder till helt olika
   // skärmar — och den ena av dem får inte visas av misstag.
   const [householdFailed, setHouseholdFailed] = useState(false)
+  const [householdError, setHouseholdError] = useState('')
   const [retryTick, setRetryTick] = useState(0)
 
   // ── Automatisk uppdatering av kiosken ──
@@ -109,6 +121,7 @@ export default function App() {
     async function checkHousehold() {
       setCheckingHousehold(true)
       setHouseholdFailed(false)
+      setHouseholdError('')
       try {
         for (let attempt = 0; attempt < 4; attempt++) {
           if (cancelled) return
@@ -129,6 +142,8 @@ export default function App() {
             console.error('[checkHousehold] försök', attempt + 1, e)
             if (cancelled) return
             if (attempt === 3) {
+              const parts = [e?.message, e?.code && `kod ${e.code}`, e?.hint, e?.details]
+              setHouseholdError(parts.filter(Boolean).join(' · ') || String(e))
               setHouseholdFailed(true)
               return
             }
@@ -169,7 +184,7 @@ export default function App() {
   // försöker igen av sig själv så att ingen behöver gå dit med en mus.
   if (householdFailed) {
     return (
-      <RetryScreen onRetry={() => setRetryTick(n => n + 1)} />
+      <RetryScreen onRetry={() => setRetryTick(n => n + 1)} detail={householdError} />
     )
   }
 
