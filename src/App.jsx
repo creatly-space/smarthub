@@ -118,8 +118,23 @@ export default function App() {
     // måste läsas uttryckligen — annars ser ett nekat svar ut som ett tomt.
     let cancelled = false
 
+    // Senast kända hushåll visas direkt, och frågan går i bakgrunden. När
+    // Supabase är segt slipper appen stå på "Laddar..." i sekunder vid varje
+    // start, och ett fel visar fortfarande köket i stället för felskärmen.
+    const cacheKey = `smarthub:household:${session.user.id}`
+    let cached = null
+    try {
+      const v = JSON.parse(localStorage.getItem(cacheKey) || 'null')
+      if (v?.id) cached = v
+    } catch { /* trasig eller blockerad lagring — fråga som vanligt */ }
+    if (cached) {
+      setHousehold(cached)
+      setHouseholdFailed(false)
+      setCheckingHousehold(false)
+    }
+
     async function checkHousehold() {
-      setCheckingHousehold(true)
+      if (!cached) setCheckingHousehold(true)
       setHouseholdFailed(false)
       setHouseholdError('')
       try {
@@ -136,11 +151,21 @@ export default function App() {
             if (cancelled) return
             if (error) throw error
 
-            setHousehold(data?.households || null)
+            const fresh = data?.households || null
+            try {
+              if (fresh) localStorage.setItem(cacheKey, JSON.stringify({ id: fresh.id, name: fresh.name }))
+              else localStorage.removeItem(cacheKey)
+            } catch { /* lagringen är bara en genväg */ }
+            // Bara ett riktigt svar får ta bort hushållet — då är man
+            // verkligen inte med i något längre.
+            setHousehold(fresh)
             return
           } catch (e) {
             console.error('[checkHousehold] försök', attempt + 1, e)
             if (cancelled) return
+            // Med ett cachat hushåll är köket redan uppe. Ett fel ska då inte
+            // byta ut det mot felskärmen; nästa start frågar igen.
+            if (cached) return
             if (attempt === 3) {
               const parts = [e?.message, e?.code && `kod ${e.code}`, e?.hint, e?.details]
               setHouseholdError(parts.filter(Boolean).join(' · ') || String(e))

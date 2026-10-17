@@ -6,6 +6,11 @@ import { supabase, SUPABASE_URL } from '../lib/supabase'
 // Den som står framför skärmen behöver veta vad som ska kontrolleras.
 function describeError(error) {
   const msg = error?.message || String(error)
+  // 502/503/504 från Supabase blir en AuthRetryableFetchError vars message är
+  // ett JSON.stringify:at Response-objekt — alltså bokstavligen "{}".
+  if (error?.status >= 500 || msg === '{}') {
+    return `Servern svarar inte just nu${error?.status ? ` (${error.status})` : ''}. Försök igen om en stund.`
+  }
   if (/failed to fetch|network|load failed/i.test(msg)) {
     return `Nådde inte servern (${SUPABASE_URL || 'adress saknas i bygget'}). `
       + 'Kontrollera att skärmen har nät, och att adressen ovan stämmer.'
@@ -23,8 +28,8 @@ function getInviteFromUrl() {
 }
 
 export default function Login() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [stateEmail, setEmail] = useState('')
+  const [statePassword, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState('info') // 'info' | 'error' | 'success'
@@ -48,6 +53,14 @@ export default function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (loading) return
+    // Läs fälten ur formuläret, inte ur state. Chromium fyller i sparade
+    // lösenord utan att React får något onChange förrän sidan rörts, så på
+    // väggen var state tomt fast prickarna syntes.
+    const fields = e.currentTarget.elements
+    const email = (fields.email?.value ?? stateEmail).trim()
+    const password = fields.password?.value ?? statePassword
+    setEmail(email)
+    setPassword(password)
     setLoading(true)
     showMessage('', 'info')
 
@@ -156,8 +169,9 @@ export default function Login() {
         <form onSubmit={handleSubmit}>
           <input
             type="email"
+            name="email"
             placeholder="Email"
-            value={email}
+            value={stateEmail}
             onChange={(e) => setEmail(e.target.value)}
             required
             autoComplete="email"
@@ -165,8 +179,9 @@ export default function Login() {
           />
           <input
             type="password"
+            name="password"
             placeholder="Lösenord (minst 6 tecken)"
-            value={password}
+            value={statePassword}
             onChange={(e) => setPassword(e.target.value)}
             required
             minLength={6}
@@ -199,7 +214,7 @@ export default function Login() {
               marginTop: 8,
             }}
           >
-            {loading ? 'Vänta...' : isSignUp ? 'Skapa konto' : 'Logga in'}
+            {loading ? (isSignUp ? 'Skapar konto…' : 'Loggar in…') : isSignUp ? 'Skapa konto' : 'Logga in'}
           </button>
         </form>
 
