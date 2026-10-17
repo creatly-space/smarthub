@@ -3,7 +3,7 @@ import { createPortal } from "react-dom"
 import { supabase } from "./lib/supabase"
 import {
   Home, CalendarDays, ListChecks, UtensilsCrossed, MoreHorizontal, Settings,
-  Check, Plus, Sun, Cloud, CloudSun, CloudRain, CloudSnow, CloudLightning,
+  Check, Plus, Sun, Moon, Cloud, CloudSun, CloudRain, CloudSnow, CloudLightning,
   CloudDrizzle, CloudFog, Snowflake, Monitor,
   Users, Lock, X, ChevronRight, ChevronLeft, User, LogOut, Sparkles,
   ThumbsUp, ThumbsDown, Grip, Copy, Trash2, Edit3, Mic, MapPin,
@@ -197,6 +197,30 @@ const MOOD_IDS = Object.keys(MOODS)
 // Mobilens personliga temaväljare visar bara de neutrala temana.
 const PLAIN_THEME_IDS = Object.keys(THEMES).filter(id => !THEMES[id].mood)
 
+// Mörkt eller ljust avgörs av bakgrundens luminans, inte av en flagga — då
+// följer nya teman med av sig själva.
+function isDarkTheme(themeId) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(THEMES[themeId]?.tokens.bg || "").trim())
+  if (!m) return false
+  const n = parseInt(m[1], 16)
+  const lum = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255
+  return lum < 0.4
+}
+// Sol/måne-knappen växlar mellan ditt senaste ljusa tema och det här.
+const DARK_TOGGLE_THEME = "mork"
+const LAST_LIGHT_THEME_KEY = "smarthub:lastLightTheme"
+function getLastLightTheme() {
+  try {
+    const id = localStorage.getItem(LAST_LIGHT_THEME_KEY)
+    if (id && THEMES[id] && !THEMES[id].mood && !isDarkTheme(id)) return id
+  } catch {}
+  return DEFAULT_THEME
+}
+function rememberLightTheme(themeId) {
+  if (!THEMES[themeId] || THEMES[themeId].mood || isDarkTheme(themeId)) return
+  try { localStorage.setItem(LAST_LIGHT_THEME_KEY, themeId) } catch {}
+}
+
 const DEFAULT_THEME = "default"
 // token → CSS-variabel
 const THEME_VARS = {
@@ -245,6 +269,10 @@ function applyTheme(themeId) {
     root.setProperty(`--sh-accent-${name}`, color)
   }
   root.setProperty("--sh-accent", theme.accents.calendar)
+  // Datumväljare, scrollbars och andra inbyggda kontroller följer med temat.
+  const dark = isDarkTheme(themeId in THEMES ? themeId : DEFAULT_THEME)
+  root.setProperty("color-scheme", dark ? "dark" : "light")
+  document.documentElement.setAttribute("data-theme", dark ? "dark" : "light")
 }
 applyTheme(DEFAULT_THEME)
 
@@ -1109,12 +1137,12 @@ function AddEventModal({ open, prefillDate, editEvent, persons, userId, onClose,
   }
 
   return (
-    <div onClick={onClose} style={{
+    <div onClick={onClose} className="sh-fade-in" style={{
       position: "fixed", inset: 0, zIndex: 300,
       background: "rgba(0,0,0,0.4)",
       display: "flex", alignItems: "flex-end", justifyContent: "center",
     }}>
-      <div onClick={e => e.stopPropagation()} style={{
+      <div onClick={e => e.stopPropagation()} className="sh-sheet-up" style={{
         background: t.card, borderRadius: "20px 20px 0 0",
         width: "100%", maxWidth: 560,
         padding: 20, paddingBottom: 32,
@@ -1764,7 +1792,7 @@ function NotificationBell({ activity, persons, members, userId, onOpenFeed }) {
       {open && (
         <>
           <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 250 }} />
-          <div style={{
+          <div className="sh-grow-tr" style={{
             position: "absolute", top: "100%", right: 0, marginTop: 6, zIndex: 260,
             width: 320, maxHeight: 400, overflowY: "auto",
             background: t.card, borderRadius: 12, border: `1px solid ${t.cardBorder}`,
@@ -1842,12 +1870,12 @@ function DayModal({ open, date, events, persons, onClose, onAddEvent, onEditEven
   }
 
   return (
-    <div onClick={onClose} style={{
+    <div onClick={onClose} className="sh-fade-in" style={{
       position: "fixed", inset: 0, zIndex: 290,
       background: "rgba(0,0,0,0.4)",
       display: "flex", alignItems: "flex-end", justifyContent: "center",
     }}>
-      <div onClick={e => e.stopPropagation()} style={{
+      <div onClick={e => e.stopPropagation()} className="sh-sheet-up" style={{
         background: t.card, borderRadius: "20px 20px 0 0",
         width: "100%", maxWidth: 560,
         maxHeight: "80vh",
@@ -4124,12 +4152,12 @@ function TvEditorSection({ onBack, isMobile, tvData, tvSlots, onSaveTvSlots, tvP
       </Card>
 
       {pickerOpen && (
-        <div onClick={() => setPickerOpen(null)} style={{
+        <div onClick={() => setPickerOpen(null)} className="sh-fade-in" style={{
           position: "fixed", inset: 0, zIndex: 300,
           background: "rgba(0,0,0,0.4)",
           display: "flex", alignItems: "flex-end", justifyContent: "center",
         }}>
-          <div onClick={e => e.stopPropagation()} style={{
+          <div onClick={e => e.stopPropagation()} className="sh-sheet-up" style={{
             background: t.card, borderRadius: "20px 20px 0 0",
             width: "100%", maxWidth: 560,
             padding: 20, paddingBottom: 32,
@@ -4190,6 +4218,26 @@ function AccountSection({ onBack }) {
 
 // Ett kort per tema. Miniatyren målas med temats EGNA tokens, så alla sex
 // alternativen syns sida vid sida utan att man måste prova sig fram.
+// Snabbknapp: sol i ljust läge, måne i mörkt. Ikonen får en ny key vid byte
+// så att pop-animationen spelas om.
+function DarkToggleButton({ dark, onToggle, size = 16, color = ACCENT.calendar, style = {} }) {
+  if (!onToggle) return null
+  const label = dark ? "Byt till ljust läge" : "Byt till mörkt läge"
+  return (
+    <button onClick={onToggle} aria-label={label} title={label} style={{
+      background: "transparent", border: `1px solid ${t.inputBorder}`,
+      borderRadius: 8, padding: "6px 8px", cursor: "pointer",
+      display: "flex", alignItems: "center", justifyContent: "center", ...style,
+    }}>
+      <span key={dark ? "moon" : "sun"} className="sh-pop" style={{ display: "flex" }}>
+        {dark
+          ? <Moon size={size} color={color} strokeWidth={2.2} />
+          : <Sun size={size} color={color} strokeWidth={2.2} />}
+      </span>
+    </button>
+  )
+}
+
 function ThemeCard({ theme, active, onClick }) {
   const tk = theme.tokens
   return (
@@ -4219,7 +4267,7 @@ function ThemeCard({ theme, active, onClick }) {
   )
 }
 
-function ThemeSection({ onBack, mobileTheme, tvTheme, onSetMobileTheme, onSetTvTheme }) {
+function ThemeSection({ onBack, mobileTheme, tvTheme, onSetMobileTheme, onSetTvTheme, mobileDark, onToggleDark }) {
   const groups = [
     {
       title: "Min mobil", icon: "📱",
@@ -4239,6 +4287,42 @@ function ThemeSection({ onBack, mobileTheme, tvTheme, onSetMobileTheme, onSetTvT
   return (
     <div>
       <SectionHeader title="Färgtema" onBack={onBack} />
+      {onToggleDark && (
+        <Card style={{ marginBottom: 12 }}>
+          <button onClick={onToggleDark} aria-pressed={!!mobileDark} style={{
+            display: "flex", alignItems: "center", gap: 12, width: "100%",
+            padding: 16, background: "transparent", border: "none", cursor: "pointer", textAlign: "left",
+          }}>
+            <span key={mobileDark ? "moon" : "sun"} className="sh-pop" style={{
+              width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+              background: `${ACCENT.calendar}18`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              {mobileDark
+                ? <Moon size={18} color={ACCENT.calendar} strokeWidth={2.2} />
+                : <Sun size={18} color={ACCENT.calendar} strokeWidth={2.2} />}
+            </span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ display: "block", fontFamily: "Nunito, sans-serif", fontSize: 13, fontWeight: 800, color: t.text }}>Mörkt läge</span>
+              <span style={{ display: "block", fontFamily: "Nunito, sans-serif", fontSize: 11, color: t.textMuted }}>
+                {mobileDark ? "På · tryck för att gå tillbaka till ditt ljusa tema" : "Av · byter till Mörk på din mobil"}
+              </span>
+            </span>
+            <span style={{
+              position: "relative", width: 48, height: 28, borderRadius: 14, flexShrink: 0,
+              background: mobileDark ? ACCENT.calendar : t.inputBorder,
+              transition: "background .25s ease",
+            }}>
+              <span style={{
+                position: "absolute", top: 3, left: mobileDark ? 23 : 3,
+                width: 22, height: 22, borderRadius: 11, background: "#fff",
+                boxShadow: "0 1px 4px rgba(0,0,0,0.25)",
+                transition: "left .3s cubic-bezier(.34,1.56,.64,1)",
+              }} />
+            </span>
+          </button>
+        </Card>
+      )}
       {groups.map(g => (
         <Card key={g.title} style={{ marginBottom: 12 }}>
           <div style={{ padding: 16 }}>
@@ -4701,7 +4785,7 @@ function SpotifySection({ onBack, householdId, tvSlots, onSaveTvSlots }) {
   )
 }
 
-function SettingsTab({ isMobile, session, household, members, foodPrefs, setFoodPrefs, onCreateInvite, tvData, tvSlots, onSaveTvSlots, tvPhotoUrl, onSaveTvPhoto, onUploadTvPhoto, userId, themeColor, setThemeColor, displayName, onSaveDisplayName, pushStatus, onEnablePush, onDisablePush, mobileTheme, tvTheme, onSetMobileTheme, onSetTvTheme, rewardCharts, onAddRewardChart, onUpdateRewardChart, onDeleteRewardChart, onPinRewardChart, onResetRewardChart }) {
+function SettingsTab({ isMobile, session, household, members, foodPrefs, setFoodPrefs, onCreateInvite, tvData, tvSlots, onSaveTvSlots, tvPhotoUrl, onSaveTvPhoto, onUploadTvPhoto, userId, themeColor, setThemeColor, displayName, onSaveDisplayName, pushStatus, onEnablePush, onDisablePush, mobileTheme, tvTheme, onSetMobileTheme, onSetTvTheme, mobileDark, onToggleDark, rewardCharts, onAddRewardChart, onUpdateRewardChart, onDeleteRewardChart, onPinRewardChart, onResetRewardChart }) {
   const [activeSection, setActiveSection] = useState(null)
   const sections = [
     { id: "profile", icon: User, label: "Profil", desc: "Namn, profilbild" },
@@ -4715,7 +4799,7 @@ function SettingsTab({ isMobile, session, household, members, foodPrefs, setFood
   ]
   if (activeSection === "tv") return <TvEditorSection onBack={() => setActiveSection(null)} isMobile={isMobile} tvData={tvData} tvSlots={tvSlots} onSaveTvSlots={onSaveTvSlots} tvPhotoUrl={tvPhotoUrl} onSaveTvPhoto={onSaveTvPhoto} onUploadTvPhoto={onUploadTvPhoto} />
   if (activeSection === "profile") return <ProfileSection onBack={() => setActiveSection(null)} session={session} themeColor={themeColor} setThemeColor={setThemeColor} displayName={displayName} onSaveDisplayName={onSaveDisplayName} pushStatus={pushStatus} onEnablePush={onEnablePush} onDisablePush={onDisablePush} />
-  if (activeSection === "theme") return <ThemeSection onBack={() => setActiveSection(null)} mobileTheme={mobileTheme} tvTheme={tvTheme} onSetMobileTheme={onSetMobileTheme} onSetTvTheme={onSetTvTheme} />
+  if (activeSection === "theme") return <ThemeSection onBack={() => setActiveSection(null)} mobileTheme={mobileTheme} tvTheme={tvTheme} onSetMobileTheme={onSetMobileTheme} onSetTvTheme={onSetTvTheme} mobileDark={mobileDark} onToggleDark={onToggleDark} />
   if (activeSection === "reward") return <RewardChartsSection onBack={() => setActiveSection(null)} charts={rewardCharts || []} onAdd={onAddRewardChart} onUpdate={onUpdateRewardChart} onDelete={onDeleteRewardChart} onPin={onPinRewardChart} onReset={onResetRewardChart} />
   if (activeSection === "spotify") return <SpotifySection onBack={() => setActiveSection(null)} householdId={household?.id} tvSlots={tvSlots} onSaveTvSlots={onSaveTvSlots} />
   if (activeSection === "household") return <HouseholdSection onBack={() => setActiveSection(null)} household={household} members={members} userId={userId} onCreateInvite={onCreateInvite} />
@@ -4954,7 +5038,7 @@ function AiChat({ position = "fixed", callAi, executeTool, transcribeAudio }) {
   }
 
   return (
-    <div style={{
+    <div className="sh-grow-br" style={{
       position: "absolute", bottom: position === "mobile" ? 76 : 16, right: 16,
       width: 300, maxHeight: 420, background: t.card, borderRadius: 16,
       border: `1px solid ${t.cardBorder}`, boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
@@ -5218,6 +5302,7 @@ function MobileHome({
   activity, members, userId,
   onOpenDayModal,
   homeConfig, setHomeConfig, editMode, setEditMode,
+  dark, onToggleDark,
 }) {
   const themeColor = getThemeColor()
   // ── Drag-state ──
@@ -5315,6 +5400,7 @@ function MobileHome({
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
           {showWeather && <WeatherMini weather={weather} />}
           <NotificationBell activity={activity} persons={persons} members={members} userId={userId} />
+          <DarkToggleButton dark={dark} onToggle={onToggleDark} color={themeColor} style={{ marginLeft: 4 }} />
           <button
             onClick={() => setEditMode(v => !v)}
             aria-label={editMode ? "Avsluta redigering" : "Anpassa Hem-vy"}
@@ -5340,6 +5426,7 @@ function MobileHome({
 
       <div
         ref={containerRef}
+        className={editMode || drag ? undefined : "sh-stagger"}
         style={{
           display: useGrid ? "grid" : "flex",
           flexDirection: useGrid ? undefined : "column",
@@ -5394,6 +5481,7 @@ function TabContent({
   tvPhotoUrl, onSaveTvPhoto, onUploadTvPhoto,
   themeColor, setThemeColor,
   mobileTheme, tvTheme, onSetMobileTheme, onSetTvTheme,
+  mobileDark, onToggleDark,
   rewardCharts, onAddRewardChart, onUpdateRewardChart, onDeleteRewardChart, onPinRewardChart, onResetRewardChart,
   displayName, onSaveDisplayName,
   pushStatus, onEnablePush, onDisablePush,
@@ -5444,6 +5532,7 @@ function TabContent({
         onOpenDayModal={onOpenDayModal}
         homeConfig={homeConfig} setHomeConfig={setHomeConfig}
         editMode={homeEditMode} setEditMode={setHomeEditMode}
+        dark={mobileDark} onToggleDark={onToggleDark}
       />
     )
   }
@@ -5524,6 +5613,7 @@ function TabContent({
         userId={userId}
         themeColor={themeColor} setThemeColor={setThemeColor}
         mobileTheme={mobileTheme} tvTheme={tvTheme}
+        mobileDark={mobileDark} onToggleDark={onToggleDark}
         onSetMobileTheme={onSetMobileTheme} onSetTvTheme={onSetTvTheme}
         rewardCharts={rewardCharts}
         onAddRewardChart={onAddRewardChart} onUpdateRewardChart={onUpdateRewardChart} onDeleteRewardChart={onDeleteRewardChart}
@@ -5563,7 +5653,7 @@ function MobileNav({ tab, setTab, themeColor = ACCENT.calendar }) {
   )
 }
 
-function DesktopSidebar({ tab, setTab, session, weather, household, themeColor = ACCENT.calendar }) {
+function DesktopSidebar({ tab, setTab, session, weather, household, themeColor = ACCENT.calendar, dark, onToggleDark }) {
   const items = [
     { id: "hem", icon: Home, label: "Hem" },
     { id: "kalender", icon: CalendarDays, label: "Kalender" },
@@ -5577,7 +5667,10 @@ function DesktopSidebar({ tab, setTab, session, weather, household, themeColor =
   return (
     <div style={{ width: 220, background: t.card, borderRight: `1px solid ${t.cardBorder}`, display: "flex", flexDirection: "column", padding: "20px 0", flexShrink: 0, height: "100%" }}>
       <div style={{ padding: "0 20px 16px", borderBottom: `1px solid ${t.line}` }}>
-        <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 18, fontWeight: 700, color: t.text, marginBottom: 6 }}>SmartHub</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
+          <div style={{ fontFamily: "Comfortaa, sans-serif", fontSize: 18, fontWeight: 700, color: t.text }}>SmartHub</div>
+          <DarkToggleButton dark={dark} onToggle={onToggleDark} size={14} color={themeColor} style={{ padding: 6 }} />
+        </div>
         <ClockDisplay size="tiny" />
         <div style={{ marginTop: 6 }}><WeatherMini weather={weather} /></div>
       </div>
@@ -6852,10 +6945,20 @@ export default function SmartHub({ session, household }) {
   // själva, men hex-värdena kräver en omrendering för att synas.
   const [, forceThemeRender] = useState(0)
   const activeTheme = view === "tv" ? tvTheme : mobileTheme
+  const themeAppliedRef = useRef(false)
   useEffect(() => {
+    // Mjuk övergång vid byte, men inte vid första målningen och inte på
+    // väggen — där skulle Pi:n få animera varenda element samtidigt.
+    const animate = themeAppliedRef.current && view !== "tv" && typeof document !== "undefined"
+    themeAppliedRef.current = true
+    if (animate) document.documentElement.setAttribute("data-theme-animating", "")
     applyTheme(activeTheme)
     forceThemeRender(n => n + 1)
-  }, [activeTheme])
+    if (!animate) return
+    const ti = setTimeout(() => document.documentElement.removeAttribute("data-theme-animating"), 450)
+    return () => { clearTimeout(ti); document.documentElement.removeAttribute("data-theme-animating") }
+  }, [activeTheme, view])
+  const mobileDark = isDarkTheme(mobileTheme)
 
   // ── Data state (synced from Supabase, same shape as v10) ──
   const [lists, setLists] = useState([])
@@ -7795,6 +7898,8 @@ export default function SmartHub({ session, household }) {
   async function handleSetMobileTheme(themeId) {
     if (!THEMES[themeId] || !householdId || !userId) return
     const before = mobileTheme
+    rememberLightTheme(before)
+    rememberLightTheme(themeId)
     setMobileTheme(themeId)
     setMembers(p => p.map(m => m.user_id === userId ? { ...m, theme: themeId } : m))
     const { data, error } = await supabase.from("household_members")
@@ -7805,6 +7910,10 @@ export default function SmartHub({ session, household }) {
       setMembers(p => p.map(m => m.user_id === userId ? { ...m, theme: before } : m))
       showToast("Kunde inte spara temat")
     }
+  }
+  // Sol/måne: mörkt ↔ ditt senaste ljusa tema.
+  function handleToggleDark() {
+    handleSetMobileTheme(mobileDark ? getLastLightTheme() : DARK_TOGGLE_THEME)
   }
   // Hushållets TV-tema. Går via set_tv_theme i stället för en direkt update,
   // eftersom households.UPDATE är låst till ägaren för att skydda namnbytet —
@@ -7979,12 +8088,51 @@ export default function SmartHub({ session, household }) {
       body{margin:0;background:${t.bg};font-family:'Nunito',sans-serif;color:${t.text};-webkit-font-smoothing:antialiased}
       *{box-sizing:border-box}
       @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-      /* Tunna scrollbars som matchar v11-estetiken */
+
+      /* Temabyte: färger tonar över i stället för att hoppa. Bara under själva
+         bytet, så vanliga hover-övergångar inte blir sega. */
+      [data-theme-animating] *, [data-theme-animating] *::before, [data-theme-animating] *::after {
+        transition: background-color .35s ease, color .35s ease, border-color .35s ease, box-shadow .35s ease, fill .35s ease, stroke .35s ease !important;
+      }
+
+      /* Rörelse. "backwards" och inte "both": när animationen är klar ska den
+         släppa transform, annars skriver den över inline-transforms. */
+      @keyframes shFadeIn { from { opacity: 0 } to { opacity: 1 } }
+      @keyframes shFadeInUp { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
+      @keyframes shSheetUp { from { transform: translateY(100%) } to { transform: none } }
+      @keyframes shPop { 0% { transform: scale(.4) rotate(-90deg); opacity: 0 } 70% { transform: scale(1.15) rotate(8deg); opacity: 1 } 100% { transform: none } }
+      @keyframes shToastIn { from { opacity: 0; transform: translate(-50%, 14px) } to { opacity: 1; transform: translate(-50%, 0) } }
+      .sh-fade-in { animation: shFadeIn .2s ease-out backwards; }
+      .sh-fade-in-up { animation: shFadeInUp .3s cubic-bezier(.22,1,.36,1) backwards; }
+      .sh-sheet-up { animation: shSheetUp .32s cubic-bezier(.22,1,.36,1) backwards; }
+      .sh-pop { animation: shPop .42s cubic-bezier(.34,1.56,.64,1) backwards; }
+      .sh-toast-in { animation: shToastIn .28s cubic-bezier(.22,1,.36,1) backwards; }
+      @keyframes shGrow { from { opacity: 0; transform: scale(.9) } to { opacity: 1; transform: none } }
+      .sh-grow-br { animation: shGrow .24s cubic-bezier(.22,1,.36,1) backwards; transform-origin: bottom right; }
+      .sh-grow-tr { animation: shGrow .2s cubic-bezier(.22,1,.36,1) backwards; transform-origin: top right; }
+      .sh-stagger > * { animation: shFadeInUp .34s cubic-bezier(.22,1,.36,1) backwards; }
+      .sh-stagger > :nth-child(2) { animation-delay: .04s }
+      .sh-stagger > :nth-child(3) { animation-delay: .08s }
+      .sh-stagger > :nth-child(4) { animation-delay: .12s }
+      .sh-stagger > :nth-child(5) { animation-delay: .16s }
+      .sh-stagger > :nth-child(n+6) { animation-delay: .2s }
+
+      /* Tryck-feedback. Knappar med egen inline-transform påverkas inte. */
+      button { transition: transform .12s ease; }
+      button:active:not(:disabled) { transform: scale(.96); }
+
+      @media (prefers-reduced-motion: reduce) {
+        .sh-fade-in, .sh-fade-in-up, .sh-sheet-up, .sh-pop, .sh-toast-in, .sh-grow-br, .sh-grow-tr, .sh-stagger > * { animation: none !important; }
+        button:active:not(:disabled) { transform: none; }
+        [data-theme-animating] *, [data-theme-animating] *::before, [data-theme-animating] *::after { transition: none !important; }
+      }
+
+      /* Tunna scrollbars som följer temats textfärg */
       *::-webkit-scrollbar { width: 6px; height: 6px; }
       *::-webkit-scrollbar-track { background: transparent; }
-      *::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 3px; transition: background 0.2s; }
-      *::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); }
-      * { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.15) transparent; }
+      *::-webkit-scrollbar-thumb { background: ${t.textMuted}; border-radius: 3px; transition: background 0.2s; }
+      *::-webkit-scrollbar-thumb:hover { background: ${t.textSec}; }
+      * { scrollbar-width: thin; scrollbar-color: ${t.textMuted} transparent; }
     `}</style>
   )
 
@@ -8013,7 +8161,7 @@ export default function SmartHub({ session, household }) {
         onDelete={handleDeleteEvent}
       />
       {toast && (
-        <div style={{
+        <div key={toast} className="sh-toast-in" style={{
           position: "fixed", left: "50%", bottom: 90, transform: "translateX(-50%)",
           zIndex: 400, maxWidth: "90vw",
           background: "rgba(20,22,28,0.94)", color: "#fff",
@@ -8098,6 +8246,7 @@ export default function SmartHub({ session, household }) {
     themeColor, setThemeColor,
     mobileTheme, tvTheme,
     onSetMobileTheme: handleSetMobileTheme, onSetTvTheme: handleSetTvTheme,
+    mobileDark, onToggleDark: handleToggleDark,
     rewardCharts,
     onAddRewardChart: handleAddRewardChart,
     onUpdateRewardChart: handleUpdateRewardChart,
@@ -8126,7 +8275,9 @@ export default function SmartHub({ session, household }) {
         {fonts}{globalCss}
         <div style={{ height: "100dvh", background: t.bg, display: "flex", flexDirection: "column", position: "relative", fontFamily: "Nunito, sans-serif", overflow: "hidden" }}>
           <div style={{ flex: 1, overflow: "auto", paddingBottom: 84 }}>
-            <TabContent {...tabContentProps} />
+            <div key={tab} className="sh-fade-in-up">
+              <TabContent {...tabContentProps} />
+            </div>
           </div>
           <MobileNav tab={tab} setTab={setTab} themeColor={themeColor} />
           <AiChat position="mobile" callAi={callAiChat} executeTool={executeAiTool} transcribeAudio={transcribeAudio} />
@@ -8141,9 +8292,11 @@ export default function SmartHub({ session, household }) {
     <>
       {fonts}{globalCss}
       <div style={{ height: "100vh", background: t.bg, display: "flex", overflow: "hidden", fontFamily: "Nunito, sans-serif" }}>
-        <DesktopSidebar tab={tab} setTab={setTab} session={session} weather={weather} household={household} themeColor={themeColor} />
+        <DesktopSidebar tab={tab} setTab={setTab} session={session} weather={weather} household={household} themeColor={themeColor} dark={mobileDark} onToggleDark={handleToggleDark} />
         <div style={{ flex: 1, overflow: "auto", minWidth: 0, position: "relative" }}>
-          <TabContent {...tabContentProps} />
+          <div key={tab} className="sh-fade-in-up">
+            <TabContent {...tabContentProps} />
+          </div>
           <AiChat position="desktop" callAi={callAiChat} executeTool={executeAiTool} transcribeAudio={transcribeAudio} />
         </div>
       </div>
