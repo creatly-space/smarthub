@@ -12,6 +12,60 @@ function isTvMode() {
   return new URLSearchParams(window.location.search).get('mode') === 'tv'
 }
 
+// Väggens enhetsnyckel, från ?device= i kiosk-adressen på Pi:n. Med den loggar
+// väggen in själv via edge-funktionen tv-login — se
+// supabase/functions/tv-login/index.ts.
+function tvDeviceKey() {
+  if (typeof window === 'undefined' || !isTvMode()) return ''
+  const k = new URLSearchParams(window.location.search).get('device') || ''
+  return /^[a-f0-9]{64}$/.test(k) ? k : ''
+}
+
+// Visas i stället för inloggningsrutan när väggen har en enhetsnyckel. Försöker
+// tills det går, med växande paus — är Supabase segt eller nätet inte uppe än
+// loggar väggen in av sig själv så fort det svarar. Lyckas det tar
+// onAuthStateChange i App över och den här skärmen försvinner.
+function TvAutoLogin({ deviceKey }) {
+  const [attempt, setAttempt] = useState(0)
+  const [status, setStatus] = useState('Loggar in väggen…')
+
+  useEffect(() => {
+    let cancelled = false
+    let timer
+    async function tryLogin(n) {
+      if (cancelled) return
+      setAttempt(n)
+      try {
+        const { data, error } = await supabase.functions.invoke('tv-login', { body: { device: deviceKey } })
+        if (error || !data?.token_hash) throw error || new Error(data?.error || 'inget svar')
+        const { error: vErr } = await supabase.auth.verifyOtp({ token_hash: data.token_hash, type: 'magiclink' })
+        if (vErr) throw vErr
+        return
+      } catch (e) {
+        console.error('[TvAutoLogin] försök', n, e)
+        if (cancelled) return
+        const wait = Math.min(60, 5 * 2 ** Math.min(n - 1, 4))
+        setStatus(`Servern svarar inte än. Försöker igen om ${wait} s.`)
+        timer = setTimeout(() => tryLogin(n + 1), wait * 1000)
+      }
+    }
+    tryLogin(1)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [deviceKey])
+
+  return (
+    <div style={{
+      minHeight: '100vh', display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center', gap: 12,
+      background: '#0f0c29', color: '#fff', fontFamily: 'system-ui', textAlign: 'center', padding: 24,
+    }}>
+      <div style={{ fontSize: 18, fontWeight: 700 }}>SmartHub</div>
+      <div style={{ fontSize: 14, opacity: 0.7 }}>{status}</div>
+      {attempt > 1 && <div style={{ fontSize: 12, opacity: 0.4 }}>Försök {attempt}</div>}
+    </div>
+  )
+}
+
 // Visas när hushållet inte gick att hämta. Försöker om var tjugonde sekund av
 // sig själv — väggen har varken tangentbord eller någon som står bredvid.
 function RetryScreen({ onRetry, detail }) {
@@ -201,7 +255,8 @@ export default function App() {
   }
 
   if (!session) {
-    return <Login />
+    const deviceKey = tvDeviceKey()
+    return deviceKey ? <TvAutoLogin deviceKey={deviceKey} /> : <Login />
   }
 
   // Gick frågan inte fram vet vi ingenting — varken att hushållet saknas eller
